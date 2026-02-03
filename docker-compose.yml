@@ -1,29 +1,102 @@
 version: '3.8'
 
 services:
-  nyc_taxi_model_service:
+  db:
+    image: postgres:15-alpine
+    container_name: nyc_taxi_db
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=nyc_taxi
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ml-network
+
+  mlflow_server:
     build:
-      context: ./src/model
-      dockerfile: Dockerfile
+      context: ./services/mlflow
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/app/mlruns
+    networks:
+      - ml-network
+
+  data_api:
+    build:
+      context: ./services/data_api
+    container_name: data_api
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@db:5432/nyc_taxi
+    ports:
+      - "8001:8001"
+    networks:
+      - ml-network
+
+  etl_pipeline:
+    build:
+      context: ./services/etl
+    container_name: etl_pipeline
+    depends_on:
+      - data_api
+    environment:
+      - YEAR=2024
+      - MONTH=1
+      - DATA_API_URL=http://data_api:8001
+    networks:
+      - ml-network
+
+  training_pipeline:
+    build:
+      context: ./services/training
+    container_name: training_pipeline
+    depends_on:
+      - etl_pipeline
+      - mlflow_server
+    environment:
+      - DATA_API_URL=http://data_api:8001
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5000
+      - N_ESTIMATORS=100
+      - MAX_DEPTH=5
+    networks:
+      - ml-network
+
+  prediction_api:
+    build:
+      context: ./services/prediction_api
+    container_name: prediction_api
+    depends_on:
+      - mlflow_server
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5000
     ports:
       - "8000:8000"
-    container_name: model_api
     networks:
-      - mynetwork
+      - ml-network
 
-  streamlit:
+  frontend:
     build:
-      context: ./src/streamlit_app
-      dockerfile: Dockerfile.streamlit
+      context: ./services/frontend
+    container_name: streamlit_app
     depends_on:
-      - nyc_taxi_model_service
+      - prediction_api
+    environment:
+      - PREDICTION_API_URL=http://prediction_api:8000
     ports:
       - "8501:8501"
-    volumes:
-      - ./src/streamlit_app:/usr/src/app
     networks:
-      - mynetwork
+      - ml-network
+
+volumes:
+  postgres_data:
+  mlflow_data:
 
 networks:
-  mynetwork:
+  ml-network:
     driver: bridge
