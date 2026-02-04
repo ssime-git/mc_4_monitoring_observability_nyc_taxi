@@ -30,12 +30,6 @@ def main():
         passenger_count = st.number_input("Passenger Count", min_value=1, max_value=10, value=1)
         rate_code_id = st.number_input("Rate Code ID", min_value=1.0, max_value=6.0, value=1.0)
         
-        st.subheader("Coordinates")
-        pickup_longitude = st.number_input("Pickup Longitude", value=-73.985428, format="%.6f")
-        pickup_latitude = st.number_input("Pickup Latitude", value=40.748817, format="%.6f")
-        dropoff_longitude = st.number_input("Dropoff Longitude", value=-73.985428, format="%.6f")
-        dropoff_latitude = st.number_input("Dropoff Latitude", value=40.748817, format="%.6f")
-
     with col2:
         st.subheader("Location IDs")
         pu_location_id = st.number_input("Pickup Location ID", min_value=1, max_value=265, value=1)
@@ -52,10 +46,6 @@ def main():
             "vendor_id": vendor_id,
             "passenger_count": float(passenger_count),
             "rate_code_id": rate_code_id,
-            "pickup_longitude": pickup_longitude,
-            "pickup_latitude": pickup_latitude,
-            "dropoff_longitude": dropoff_longitude,
-            "dropoff_latitude": dropoff_latitude,
             "pu_location_id": pu_location_id,
             "do_location_id": do_location_id,
             "pickup_hour": pickup_dt.hour,

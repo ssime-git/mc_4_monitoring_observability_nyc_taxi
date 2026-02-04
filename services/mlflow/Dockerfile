@@ -1,5 +1,6 @@
 FROM python:3.9-slim
 ENV UV_HTTP_TIMEOUT=300
+WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -10,6 +11,6 @@ EXPOSE 5000
 # but in production you'd use S3/GCS/Azure Blob.
 CMD ["mlflow", "server", \
      "--backend-store-uri", "sqlite:///mlflow.db", \
-     "--default-artifact-root", "./mlruns", \
+     "--default-artifact-root", "/app/mlruns", \
      "--host", "0.0.0.0", \
      "--port", "5000"]

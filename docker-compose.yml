@@ -64,6 +64,8 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow_server:5000
       - N_ESTIMATORS=100
       - MAX_DEPTH=5
+    volumes:
+      - mlflow_data:/app/mlruns
     networks:
       - ml-network
 
@@ -75,6 +77,8 @@ services:
       - mlflow_server
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow_server:5000
+    volumes:
+      - mlflow_data:/app/mlruns
     ports:
       - "8000:8000"
     networks:

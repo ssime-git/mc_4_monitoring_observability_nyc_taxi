@@ -61,8 +61,24 @@ async def predict(data: RequestData):
             raise HTTPException(status_code=503, detail="Model not yet available")
     
     # Create input DataFrame
-    input_df = pd.DataFrame([data.model_dump()])
+    input_data = data.model_dump()
+    input_df = pd.DataFrame([input_data])
     
+    # Feature Engineering (Must match train.py)
+    # We don't have datetime objects here, we have integers from the request
+    # The request model already asks for pickup_hour, pickup_dayofweek, pickup_month, pickup_weekday directly
+    # So we just need to ensure the columns match perfectly.
+    
+    features = ["vendor_id", "rate_code_id", "pu_location_id", "do_location_id", 
+                "passenger_count", "pickup_hour", "pickup_dayofweek", 
+                "pickup_month", "pickup_weekday"]
+    
+    # Select only the features expected by the model
+    try:
+        input_df = input_df[features]
+    except KeyError as e:
+         raise HTTPException(status_code=400, detail=f"Missing feature: {e}")
+
     # Make prediction
     try:
         prediction = model.predict(input_df)
