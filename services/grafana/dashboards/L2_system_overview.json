@@ -1,0 +1,223 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "L1 Executive", "url": "/d/l1-executive", "type": "link", "icon": "dashboard" },
+    { "title": "L3 Deep Dive", "url": "/d/l3-deep-dive", "type": "link", "icon": "dashboard" }
+  ],
+  "panels": [
+    {
+      "title": "🔴 RED Method - Rate (Requests / Sec)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Request Rate by Service & Endpoint",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "reqps"
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[1m])) by (job, endpoint)",
+          "legendFormat": "{{job}} [{{endpoint}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "HTTP Status Codes Breakdown",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "reqps"
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[1m])) by (status)",
+          "legendFormat": "HTTP {{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "❌ RED Method - Errors (Error Rate %)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "title": "Service Error Rates (HTTP 5xx / Total)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.10 }
+            ]
+          },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "percentunit"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status=~\"5..\"}[1m])) by (job) / sum(rate(http_requests_total[1m])) by (job)",
+          "legendFormat": "{{job}} Error Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "⏱️ RED Method - Duration (Latency)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "collapsed": false
+    },
+    {
+      "title": "p99 Response Latency by Service",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "s"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))",
+          "legendFormat": "{{job}} p99 Latency",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "p50 / p90 / p99 Latency - Prediction API",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "s"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"prediction_api\"}[5m])) by (le))",
+          "legendFormat": "p99 Latency",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket{job=\"prediction_api\"}[5m])) by (le))",
+          "legendFormat": "p90 Latency",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"prediction_api\"}[5m])) by (le))",
+          "legendFormat": "p50 Latency",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "🔍 Observability (Logs & Traces)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "collapsed": false
+    },
+    {
+      "title": "Service Logs Stream",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "options": {
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "showCommonLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{service=~\"prediction_api|data_api|training_pipeline|etl_pipeline\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Error Logs (level=ERROR)",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "options": {
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "showCommonLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{service=~\"prediction_api|data_api|training_pipeline|etl_pipeline\"} | json | level = \"ERROR\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Trace Duration by Service (duration > 10ms)",
+      "type": "traces",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+      "options": {
+        "queryType": "traceql"
+      },
+      "targets": [
+        {
+          "expr": "{ duration > 10ms }",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["nyc-taxi", "system", "L2", "application"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "L2 - System Overview Dashboard",
+  "uid": "l2-system-overview",
+  "version": 1
+}

@@ -6,3 +6,5 @@ requests
 joblib
 pyarrow
 fastparquet
+fastapi
+uvicorn[standard]

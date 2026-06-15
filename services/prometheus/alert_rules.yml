@@ -1,0 +1,90 @@
+groups:
+  # ── Application Layer Alerts (Layer 3 — RED Method) ──
+  - name: application_alerts
+    rules:
+      # RED: Errors — Alert on symptoms, not causes
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[1m])) by (job)
+            /
+            sum(rate(http_requests_total[1m])) by (job)
+          ) > 0.10
+        for: 1m
+        labels:
+          severity: page
+          layer: application
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      # RED: Duration — Latency degradation
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))
+          > 2.0
+        for: 5m
+        labels:
+          severity: ticket
+          layer: application
+        annotations:
+          summary: "High p99 latency on {{ $labels.job }}"
+          description: "p99 latency is {{ $value }}s (threshold: 2s)"
+
+      # Service availability
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: page
+          layer: platform
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Target {{ $labels.instance }} has been unreachable for 30s"
+
+  # ── ML Model Layer Alerts (Layer 4) ──
+  - name: model_alerts
+    rules:
+      - alert: LowPredictionThroughput
+        expr: |
+          sum(rate(prediction_requests_total[5m])) < 0.01
+        for: 10m
+        labels:
+          severity: ticket
+          layer: model
+        annotations:
+          summary: "Low prediction throughput"
+          description: "Prediction rate has dropped below 0.01 req/s for 10 minutes"
+
+      - alert: ModelNotLoaded
+        expr: model_loaded == 0
+        for: 5m
+        labels:
+          severity: page
+          layer: model
+        annotations:
+          summary: "ML model is not loaded"
+          description: "The prediction API model has been unloaded for over 5 minutes"
+
+  # ── Drift Alerts (Evidently Metrics) ──
+  - name: drift_alerts
+    rules:
+      - alert: DataDriftDetected
+        expr: data_drift_detected == 1
+        for: 1m
+        labels:
+          severity: ticket
+          layer: model
+        annotations:
+          summary: "Data drift detected"
+          description: "Data drift has been detected by Evidently service. Current drift detected: {{ $value }}"
+
+      - alert: ModelPerformanceDegraded
+        expr: model_drift_rmse_current > model_drift_rmse_reference * 1.2
+        for: 1m
+        labels:
+          severity: ticket
+          layer: model
+        annotations:
+          summary: "Model performance degraded"
+          description: "Current model RMSE ({{ $value }}) is >20% worse than reference model RMSE"

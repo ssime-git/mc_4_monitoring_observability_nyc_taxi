@@ -1,0 +1,330 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "L2 System Overview", "url": "/d/l2-system-overview", "type": "link", "icon": "dashboard" },
+    { "title": "L3 Deep Dive", "url": "/d/l3-deep-dive", "type": "link", "icon": "dashboard" }
+  ],
+  "panels": [
+    {
+      "title": "📊 Business KPIs",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Total Predictions Served",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 100 },
+              { "color": "yellow", "value": 10000 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "prediction_requests_total", "legendFormat": "Predictions", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Current Error Rate",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.10 }
+            ]
+          },
+          "unit": "percentunit",
+          "max": 1
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"prediction_api\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"prediction_api\"}[5m]))",
+          "legendFormat": "Error Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Avg Predicted Fare",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "orange", "value": null }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "rate(prediction_value_dollars_sum[5m]) / rate(prediction_value_dollars_count[5m])",
+          "legendFormat": "Avg Fare",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Services Status",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "up{job=\"prediction_api\"}", "legendFormat": "Prediction API", "refId": "A" },
+        { "expr": "up{job=\"data_api\"}", "legendFormat": "Data API", "refId": "B" }
+      ]
+    },
+    {
+      "title": "📈 Trends",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "title": "Predictions per Minute",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "spanNulls": false, "drawStyle": "line", "gradientMode": "scheme" },
+          "unit": "rpm"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "rate(prediction_requests_total[1m]) * 60",
+          "legendFormat": "Predictions/min",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Predicted Revenue (cumulative $)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line", "gradientMode": "scheme" },
+          "unit": "currencyUSD"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "total_predicted_revenue_dollars_total",
+          "legendFormat": "Cumulative Revenue",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Fare Distribution",
+      "type": "histogram",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD"
+        }
+      },
+      "targets": [
+        {
+          "expr": "prediction_value_dollars_bucket{job=\"prediction_api\"}",
+          "legendFormat": "{{le}}",
+          "refId": "A",
+          "format": "heatmap"
+        }
+      ]
+    },
+    {
+      "title": "Model Status",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 14 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "NOT LOADED", "color": "red" }, "1": { "text": "LOADED", "color": "green" } } }
+          ]
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "model_loaded", "legendFormat": "Model", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Model Load Time",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 14 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 30 },
+              { "color": "red", "value": 120 }
+            ]
+          },
+          "unit": "s"
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "model_load_duration_seconds", "legendFormat": "Load Time", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Trips Ingested (total)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "trips_ingested_total", "legendFormat": "Trips", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Drift Status",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "NO DRIFT", "color": "green" }, "1": { "text": "DRIFT DETECTED", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "data_drift_detected", "legendFormat": "Data Drift", "refId": "A" }
+      ]
+    },
+    {
+      "title": "🔍 Observability (Logs & Traces)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false
+    },
+    {
+      "title": "Recent Logs",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "options": {
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "showCommonLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{service=~\"prediction_api|data_api\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Recent Traces",
+      "type": "traces",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "options": {
+        "queryType": "traceql"
+      },
+      "targets": [
+        {
+          "expr": "{ .service.name = \"prediction_api\" }",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["nyc-taxi", "executive", "L1", "business"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "L1 - Executive Dashboard",
+  "uid": "l1-executive",
+  "version": 1
+}

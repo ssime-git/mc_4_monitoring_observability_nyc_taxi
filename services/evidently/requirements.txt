@@ -1,0 +1,8 @@
+evidently>=0.4.0
+fastapi
+uvicorn[standard]
+pandas
+prometheus_client
+pyarrow
+fastparquet
+requests

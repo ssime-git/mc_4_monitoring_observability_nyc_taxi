@@ -1,0 +1,47 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - "alert_rules.yml"
+
+scrape_configs:
+  # ── Application Layer (Layer 3) ──
+  - job_name: "data_api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["data_api:8001"]
+        labels:
+          service: "data_api"
+          layer: "application"
+
+  - job_name: "prediction_api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["prediction_api:8000"]
+        labels:
+          service: "prediction_api"
+          layer: "application"
+
+  # ── Evidently service drift monitoring ──
+  - job_name: "evidently_service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["evidently_service:8002"]
+        labels:
+          service: "evidently_service"
+          layer: "application"
+
+  # ── Platform Layer (Layer 2) — Prometheus self-monitoring ──
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          layer: "platform"
+
+  # ── Loki health (Pillar: Logs) ──
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          layer: "platform"

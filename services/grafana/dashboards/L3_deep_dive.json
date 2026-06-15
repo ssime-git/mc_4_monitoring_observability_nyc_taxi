@@ -1,0 +1,288 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "L1 Executive", "url": "/d/l1-executive", "type": "link", "icon": "dashboard" },
+    { "title": "L2 System Overview", "url": "/d/l2-system-overview", "type": "link", "icon": "dashboard" }
+  ],
+  "panels": [
+    {
+      "title": "🤖 ML Model Deep Dive (Layer 4 - Prediction API)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Model Inference Latency (Inference Only)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "s"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99 Inference",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p90 Inference",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50 Inference",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "Prediction Errors by Type",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "short"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(prediction_errors_total[1m])) by (error_type)",
+          "legendFormat": "{{error_type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "💾 Data Pipeline & Database Deep Dive (Layer 2 - Data API)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "title": "Batch Ingestion Size Distribution",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "short"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(trips_batch_size_bucket[5m])) by (le))",
+          "legendFormat": "p90 Batch Size",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(trips_batch_size_bucket[5m])) by (le))",
+          "legendFormat": "p50 Batch Size",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Data Quality - Null Rates",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "percentunit"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "data_null_rate",
+          "legendFormat": "Null Rate: {{field}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Active Database Connections",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "db_connections_active", "legendFormat": "Active Connections", "refId": "A" }
+      ]
+    },
+    {
+      "title": "Data Ingestion Errors Total",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "data_ingestion_errors_total", "legendFormat": "Ingestion Errors", "refId": "A" }
+      ]
+    },
+    {
+      "title": "🔍 Observability Deep Dive (Logs & Traces)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false
+    },
+    {
+      "title": "Prediction Traces",
+      "type": "traces",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "options": {
+        "queryType": "traceql"
+      },
+      "targets": [
+        {
+          "expr": "{ .service.name = \"prediction_api\" }",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Ingestion Logs",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "options": {
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "showCommonLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{service=~\"etl_pipeline|data_api\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "📊 Evidently Data & Model Drift Report",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false
+    },
+    {
+      "title": "Data Drift Share",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 32 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" },
+          "unit": "percentunit"
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "data_drift_share",
+          "legendFormat": "Drifted Features %",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "RMSE: Current vs Reference",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 32 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "model_drift_rmse_current",
+          "legendFormat": "Current RMSE",
+          "refId": "A"
+        },
+        {
+          "expr": "model_drift_rmse_reference",
+          "legendFormat": "Reference RMSE",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "🚨 Active Alerts in Prometheus",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "collapsed": false
+    },
+    {
+      "title": "Alert List",
+      "type": "alertlist",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 39 },
+      "options": {
+        "show": "all",
+        "sortOrder": 1,
+        "stateFilter": { "firing": true, "pending": true, "no_data": false, "normal": false }
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["nyc-taxi", "debug", "L3", "ml-model", "database"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "L3 - Deep Dive Dashboard",
+  "uid": "l3-deep-dive",
+  "version": 1
+}

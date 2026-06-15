@@ -5,3 +5,8 @@ scikit-learn
 pandas
 psycopg2-binary
 pydantic
+prometheus_client
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi

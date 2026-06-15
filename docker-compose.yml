@@ -43,12 +43,14 @@ services:
     build:
       context: ./services/etl
     container_name: etl_pipeline
+    restart: unless-stopped
     depends_on:
       - data_api
     environment:
       - YEAR=2024
       - MONTH=1
       - DATA_API_URL=http://data_api:8001
+      - INGESTION_INTERVAL_SECONDS=600
     networks:
       - ml-network
 
@@ -56,16 +58,36 @@ services:
     build:
       context: ./services/training
     container_name: training_pipeline
+    restart: unless-stopped
     depends_on:
-      - etl_pipeline
+      - data_api
       - mlflow_server
     environment:
       - DATA_API_URL=http://data_api:8001
       - MLFLOW_TRACKING_URI=http://mlflow_server:5000
+      - EVIDENTLY_URL=http://evidently_service:8002
+      - REFERENCE_DATA_PATH=/app/reference_data/reference.parquet
       - N_ESTIMATORS=100
       - MAX_DEPTH=5
+      - RETRAIN_INTERVAL_SECONDS=86400
+    ports:
+      - "8003:8003"
     volumes:
       - mlflow_data:/app/mlruns
+      - reference_data:/app/reference_data
+    networks:
+      - ml-network
+
+  evidently_service:
+    build:
+      context: ./services/evidently
+    container_name: evidently_service
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - reference_data:/app/reference_data
+      - evidently_reports:/app/reports
     networks:
       - ml-network
 
@@ -97,9 +119,95 @@ services:
     networks:
       - ml-network
 
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus
+    volumes:
+      - ./services/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./services/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - ml-network
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DATABASE_WAL=true
+    volumes:
+      - ./services/grafana/provisioning:/etc/grafana/provisioning
+      - ./services/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - ml-network
+
+  loki:
+    image: grafana/loki:2.9.2
+    container_name: loki
+    volumes:
+      - ./services/loki/loki-config.yml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - ml-network
+
+  promtail:
+    image: grafana/promtail:2.9.2
+    container_name: promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./services/promtail/promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - ml-network
+
+  tempo:
+    image: grafana/tempo:2.3.0
+    container_name: tempo
+    volumes:
+      - ./services/tempo/tempo-config.yml:/etc/tempo/tempo-config.yaml
+    command: -config.file=/etc/tempo/tempo-config.yaml
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - ml-network
+
+
+  load_simulator:
+    build:
+      context: ./services/load_simulator
+    container_name: load_simulator
+    environment:
+      - PREDICTION_API_URL=http://prediction_api:8000
+      - REQUESTS_PER_SECOND=2
+    depends_on:
+      - prediction_api
+    networks:
+      - ml-network
+
 volumes:
   postgres_data:
   mlflow_data:
+  prometheus_data:
+  grafana_data:
+  reference_data:
+  evidently_reports:
 
 networks:
   ml-network:
