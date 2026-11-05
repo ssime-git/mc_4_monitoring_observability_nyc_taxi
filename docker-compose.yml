@@ -60,6 +60,7 @@ services:
     networks:
     - ml-network
   frontend:
+    image: nyc-taxi-frontend:demo
     build:
       context: .
       dockerfile: services/frontend/Dockerfile
@@ -94,7 +95,7 @@ services:
   grafana:
     image: grafana/grafana:10.2.0
     environment:
-    - GF_SECURITY_ADMIN_PASSWORD=admin
+    - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
     - GF_USERS_ALLOW_SIGN_UP=false
     - GF_DATABASE_WAL=true
     - GF_SECURITY_ALLOW_EMBEDDING=true
@@ -110,6 +111,16 @@ services:
     - prometheus
     networks:
     - ml-network
+  monitoring_init:
+    image: nyc-taxi-frontend:demo
+    command: [python, services/frontend/configure_monitoring.py]
+    environment:
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    depends_on:
+      - grafana
+    networks:
+      - ml-network
+
   loki:
     image: grafana/loki:2.9.2
     volumes:

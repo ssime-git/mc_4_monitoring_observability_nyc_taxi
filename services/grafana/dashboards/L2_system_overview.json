@@ -9,15 +9,17 @@
   ],
   "panels": [
     {
+      "id": 1,
       "title": "🔴 RED Method - Rate (Requests / Sec)",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "collapsed": false
     },
     {
+      "id": 2,
       "title": "Request Rate by Service & Endpoint",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": {
         "defaults": {
@@ -36,9 +38,10 @@
       ]
     },
     {
+      "id": 3,
       "title": "HTTP Status Codes Breakdown",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": {
         "defaults": {
@@ -57,15 +60,17 @@
       ]
     },
     {
+      "id": 4,
       "title": "❌ RED Method - Errors (Error Rate %)",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
       "collapsed": false
     },
     {
+      "id": 5,
       "title": "Service Error Rates (HTTP 5xx / Total)",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
       "fieldConfig": {
         "defaults": {
@@ -84,22 +89,24 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{status=~\"5..\"}[1m])) by (job) / sum(rate(http_requests_total[1m])) by (job)",
+          "expr": "(sum(rate(http_requests_total{status=~\"5..\"}[1m])) by (job) or (0 * sum(rate(http_requests_total[1m])) by (job))) / clamp_min(sum(rate(http_requests_total[1m])) by (job), 0.000001)",
           "legendFormat": "{{job}} Error Rate",
           "refId": "A"
         }
       ]
     },
     {
+      "id": 6,
       "title": "⏱️ RED Method - Duration (Latency)",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
       "collapsed": false
     },
     {
+      "id": 7,
       "title": "p99 Response Latency by Service",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
       "fieldConfig": {
         "defaults": {
@@ -118,9 +125,10 @@
       ]
     },
     {
+      "id": 8,
       "title": "p50 / p90 / p99 Latency - Prediction API",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
       "fieldConfig": {
         "defaults": {
@@ -149,12 +157,14 @@
       ]
     },
     {
+      "id": 9,
       "title": "🔍 Observability (Logs & Traces)",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
       "collapsed": false
     },
     {
+      "id": 10,
       "title": "Service Logs Stream",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
@@ -175,6 +185,7 @@
       ]
     },
     {
+      "id": 11,
       "title": "Error Logs (level=ERROR)",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
@@ -195,8 +206,9 @@
       ]
     },
     {
+      "id": 12,
       "title": "Trace Duration by Service (duration > 10ms)",
-      "type": "traces",
+      "type": "table",
       "datasource": { "type": "tempo", "uid": "tempo" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
       "options": {
@@ -204,7 +216,10 @@
       },
       "targets": [
         {
-          "expr": "{ duration > 10ms }",
+          "query": "{ duration > 10ms }",
+          "queryType": "traceql",
+          "tableType": "traces",
+          "limit": 20,
           "refId": "A"
         }
       ]

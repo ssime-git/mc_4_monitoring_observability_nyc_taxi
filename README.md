@@ -30,6 +30,7 @@ historiques. Cette étape peut prendre plusieurs minutes, puis bénéficie du ca
 - **Prefect Server / UI** (`4200`) : déploiement, planning et état des exécutions.
   Une base SQLite persistante est utilisée pour cette démo locale mono-serveur.
 - **Bootstrap** : crée le work pool Docker, le déploiement et le premier run.
+- **monitoring_init** : donne au rôle Viewer l’accès au dossier des dashboards Grafana.
 - **Worker Docker** : interroge Prefect et lance un conteneur par flow. Les tâches
   tournent dans ce conteneur, supprimé automatiquement à la fin (`auto_remove`).
   Le worker utilise le socket Docker de l'hôte.
@@ -119,6 +120,7 @@ il lance un autre conteneur utilisant l'image `nyc-taxi-pipeline:demo`. Les tâc
 flowchart TB
     Start["docker compose up --build -d"] --> Build[Construire les images avec uv.lock et compiler MinIO]
     Build --> Infra["Démarrer PostgreSQL, MinIO, Prefect et l'observabilité"]
+    Infra --> Permissions["monitoring_init configure les permissions Viewer de Grafana"]
     Infra --> Bucket["minio_init crée le bucket mlflow-artifacts"]
     Bucket --> ML[MLflow démarre avec son proxy S3]
     ML --> Ready{"PostgreSQL, MLflow et Prefect healthy ?"}
@@ -348,6 +350,8 @@ uv run --no-sync pytest -q
 PORTAL_PASSWORD=validation-only docker compose config --quiet
 # Après le démarrage, vérification réelle MLflow / MinIO / prédiction :
 uv run --no-sync python scripts/verify_demo.py
+# Vérifier accès anonyme, requêtes des dashboards, logs et traces :
+uv run --no-sync python scripts/verify_monitoring.py
 ```
 
 Le script de vérification attend le premier modèle, contrôle sa présence dans

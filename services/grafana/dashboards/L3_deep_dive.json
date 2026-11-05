@@ -9,15 +9,17 @@
   ],
   "panels": [
     {
+      "id": 1,
       "title": "🤖 ML Model Deep Dive (Layer 4 - Prediction API)",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "collapsed": false
     },
     {
+      "id": 2,
       "title": "Model Inference Latency (Inference Only)",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": {
         "defaults": {
@@ -46,9 +48,10 @@
       ]
     },
     {
+      "id": 3,
       "title": "Prediction Errors by Type",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": {
         "defaults": {
@@ -60,22 +63,24 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "sum(rate(prediction_errors_total[1m])) by (error_type)",
+          "expr": "sum(rate(prediction_errors_total[1m])) by (error_type) or vector(0)",
           "legendFormat": "{{error_type}}",
           "refId": "A"
         }
       ]
     },
     {
+      "id": 4,
       "title": "💾 Pipeline Prefect",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
       "collapsed": false
     },
     {
+      "id": 5,
       "title": "Training dataset rows",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
       "fieldConfig": {
         "defaults": {
@@ -99,9 +104,10 @@
       ]
     },
     {
+      "id": 6,
       "title": "Data drift share",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
       "fieldConfig": {
         "defaults": {
@@ -120,9 +126,10 @@
       ]
     },
     {
+      "id": 7,
       "title": "Candidate RMSE",
       "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 12, "x": 0, "y": 18 },
       "fieldConfig": {
         "defaults": {
@@ -143,9 +150,10 @@
       ]
     },
     {
+      "id": 8,
       "title": "Data drift detected",
       "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 12, "x": 12, "y": 18 },
       "fieldConfig": {
         "defaults": {
@@ -165,14 +173,16 @@
       ]
     },
     {
+      "id": 9,
       "title": "🔍 Observability Deep Dive (Logs & Traces)",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
       "collapsed": false
     },
     {
+      "id": 10,
       "title": "Prediction Traces",
-      "type": "traces",
+      "type": "table",
       "datasource": { "type": "tempo", "uid": "tempo" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
       "options": {
@@ -180,12 +190,16 @@
       },
       "targets": [
         {
-          "expr": "{ .service.name = \"prediction_api\" }",
+          "query": "{ .service.name = \"prediction_api\" }",
+          "queryType": "traceql",
+          "tableType": "traces",
+          "limit": 20,
           "refId": "A"
         }
       ]
     },
     {
+      "id": 11,
       "title": "Ingestion Logs",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
@@ -206,15 +220,17 @@
       ]
     },
     {
+      "id": 12,
       "title": "📊 Evidently Data & Model Drift Report",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
       "collapsed": false
     },
     {
+      "id": 13,
       "title": "Data Drift Share",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 32 },
       "fieldConfig": {
         "defaults": {
@@ -233,9 +249,10 @@
       ]
     },
     {
+      "id": 14,
       "title": "RMSE: Current vs Reference",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 32 },
       "fieldConfig": {
         "defaults": {
@@ -258,15 +275,17 @@
       ]
     },
     {
+      "id": 15,
       "title": "🚨 Active Alerts in Prometheus",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
       "collapsed": false
     },
     {
+      "id": 16,
       "title": "Alert List",
       "type": "alertlist",
-      "datasource": { "type": "prometheus", "uid": "" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 39 },
       "options": {
         "show": "all",
