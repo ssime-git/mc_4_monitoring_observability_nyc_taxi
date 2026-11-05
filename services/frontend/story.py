@@ -277,6 +277,30 @@ def validation():
     with right:
         c.section('② Monitoring')
         live_validation()
+    c.section('④ Batch data — where do the rejected rows go?')
+    st.caption('The pipeline never drops bad rows silently: they are stored in PostgreSQL (`quarantine_trips`) with the failed check. '
+               'The counter you see in Grafana is only the tip; this is the evidence.')
+    quarantine_view()
+
+
+@st.fragment(run_every='15s')
+def quarantine_view():
+    try:
+        result = c.quarantine()
+    except Exception:  # psycopg2 errors are not requests errors; the page must still render when the DB is down
+        result = None
+    if result is None:
+        st.warning('Cannot read the quarantine table (PostgreSQL unreachable).')
+        return
+    by_reason, sample = result
+    if by_reason.empty:
+        st.success('Nothing quarantined yet: no invalid row in the ingested batches.')
+        return
+    left, right = st.columns([2, 3])
+    left.metric('Rows in quarantine', f"{int(by_reason['rows'].sum()):,}")
+    left.dataframe(by_reason, hide_index=True, width='stretch')
+    right.markdown('**Random sample** (the failing value is visible, e.g. a zero or negative fare)')
+    right.dataframe(sample, hide_index=True, width='stretch')
 
 
 # ---------------------------------------------------------------------------------------- 5 outage

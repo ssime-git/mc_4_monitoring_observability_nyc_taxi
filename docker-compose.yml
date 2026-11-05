@@ -75,6 +75,7 @@ services:
     - prediction_api
     - controller
     environment:
+    - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@db:5432/nyc_taxi
     - PREDICTION_API_URL=http://prediction_api:8000
     - ALERTMANAGER_UI_URL=${ALERTMANAGER_UI_URL:-http://localhost:9093}
     - PORTAL_USERNAME=${PORTAL_USERNAME:-demo}

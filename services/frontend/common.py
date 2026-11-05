@@ -235,3 +235,22 @@ def pillars(monitoring, observability):
     a.markdown(monitoring)
     b.markdown('##### 🔎 Observability — *why is it wrong?*')
     b.markdown(observability)
+
+
+# ---- data quarantine (read-only queries on the table written by the pipeline) -------------------------
+def quarantine(limit=20):
+    """(rows_by_reason, sample_rows) from PostgreSQL `quarantine_trips`; empty frames if nothing was quarantined yet."""
+    import psycopg2
+    conn = psycopg2.connect(os.environ['DATABASE_URL'], connect_timeout=5)
+    try:
+        conn.set_session(readonly=True)
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('quarantine_trips')")
+            if cur.fetchone()[0] is None:
+                return pd.DataFrame(), pd.DataFrame()
+        by_reason = pd.read_sql("SELECT reason, count(*) AS rows FROM quarantine_trips GROUP BY reason ORDER BY rows DESC", conn)
+        sample = pd.read_sql(f"SELECT reason, pu_location_id, do_location_id, passenger_count, total_fare, pickup_hour "
+                             f"FROM quarantine_trips ORDER BY random() LIMIT {int(limit)}", conn)
+        return by_reason, sample
+    finally:
+        conn.close()

@@ -1380,6 +1380,7 @@ frontend = [
     { name = "altair" },
     { name = "mlflow-skinny" },
     { name = "pandas" },
+    { name = "psycopg2-binary" },
     { name = "requests" },
     { name = "streamlit" },
 ]
@@ -1464,6 +1465,7 @@ frontend = [
     { name = "altair" },
     { name = "mlflow-skinny", specifier = "==2.22.2" },
     { name = "pandas" },
+    { name = "psycopg2-binary", specifier = ">=2.9,<3" },
     { name = "requests" },
     { name = "streamlit", specifier = ">=1.45,<2" },
 ]

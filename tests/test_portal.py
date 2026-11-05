@@ -41,6 +41,7 @@ PAGES = [('story', f) for f in ['home', 'normal', 'latency', 'drift', 'validatio
 def test_every_page_renders_without_backends(module, function, monkeypatch):
     """Pages must degrade gracefully (the outage scenario makes backends unavailable on purpose)."""
     monkeypatch.setenv('PREDICTION_API_URL', 'http://127.0.0.1:9')
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://x:x@127.0.0.1:9/x')
     for name in ['PROMETHEUS_API_URL', 'ALERT_WEBHOOK_URL', 'LOKI_API_URL', 'TEMPO_API_URL', 'CONTROLLER_API_URL',
                  'SIMULATOR_API_URL', 'PREFECT_API_URL', 'ALERTMANAGER_API_URL']:
         monkeypatch.setenv(name, 'http://127.0.0.1:9')
