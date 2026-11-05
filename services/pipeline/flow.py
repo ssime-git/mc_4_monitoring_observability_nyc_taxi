@@ -1,6 +1,7 @@
 """Automatic demo: real TLC data -> SQL -> Evidently -> MLflow -> MinIO."""
 import hashlib
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -20,6 +21,10 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sqlalchemy import create_engine, text
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import taxi_drift  # noqa: E402
+import taxi_validation  # noqa: E402
+
 FEATURES = ['vendor_id', 'rate_code_id', 'pu_location_id', 'do_location_id',
             'passenger_count', 'pickup_hour', 'pickup_dayofweek', 'pickup_month', 'pickup_weekday']
 MODEL_NAME = 'NYC_Taxi_Fare_Model'
@@ -27,6 +32,10 @@ EXPERIMENT = 'NYC_Taxi_Fare_Prediction_MinIO'
 
 
 def prepare(raw):
+    return prepare_with_quarantine(raw)[0]
+
+
+def prepare_with_quarantine(raw):
     df = raw.rename(columns={'VendorID': 'vendor_id', 'RatecodeID': 'rate_code_id',
         'PULocationID': 'pu_location_id', 'DOLocationID': 'do_location_id', 'Airport_fee': 'airport_fee'}).copy()
     required = ['vendor_id', 'rate_code_id', 'pu_location_id', 'do_location_id',
@@ -41,16 +50,17 @@ def prepare(raw):
     for col in ['extra', 'mta_tax', 'improvement_surcharge', 'tolls_amount', 'airport_fee']:
         if col in df:
             df['total_fare'] += pd.to_numeric(df[col], errors='coerce').fillna(0)
+    # Invalid rows are quarantined with a reason (pandera). Too many invalid rows means the
+    # source itself is broken, so the flow fails loudly instead of training on what is left.
+    cfg = taxi_drift.load_config()['validation']
     df = df[FEATURES + ['total_fare']].apply(pd.to_numeric, errors='coerce')
-    # Quality failures stop the flow instead of training on malformed inputs.
-    valid = np.isfinite(df).all(axis=1) & (df.total_fare > 0) & df.passenger_count.between(1, 10)
-    valid &= df.pu_location_id.between(1, 265) & df.do_location_id.between(1, 265)
-    if valid.mean() < 0.8:
-        raise ValueError('More than 20% of rows fail quality validation')
-    df = df.loc[valid].reset_index(drop=True)
-    if len(df) < 100:
-        raise ValueError('At least 100 valid trips are required')
-    return df
+    valid, quarantined = taxi_validation.split_valid_invalid(df)
+    if len(quarantined) / max(len(df), 1) > cfg['max_invalid_share']:
+        raise ValueError(f"More than {cfg['max_invalid_share']:.0%} of rows fail quality validation")
+    df = valid.reset_index(drop=True)
+    if len(df) < cfg['min_valid_rows']:
+        raise ValueError(f"At least {cfg['min_valid_rows']} valid trips are required")
+    return df, quarantined
 
 
 @task(retries=3, retry_delay_seconds=10, persist_result=False)
@@ -66,7 +76,8 @@ def ingest(year, month, limit):
                 for chunk in response.iter_content(1024 * 1024):
                     dest.write(chunk)
         raw = next(pq.ParquetFile(path).iter_batches(batch_size=limit)).to_pandas()
-    df = prepare(raw)
+    df, quarantined = prepare_with_quarantine(raw)
+    df.attrs['quarantined_rows'] = len(quarantined)
     # A source + sampling key makes retries and restarts idempotent.
     source = hashlib.sha256(f'{url}:{limit}:v1'.encode()).hexdigest()
     engine = create_engine(os.environ['DATABASE_URL'])
@@ -77,6 +88,8 @@ def ingest(year, month, limit):
             if not exists:
                 stored = df.assign(source=source)
                 stored.to_sql('training_trips', conn, if_exists='append', index=False, method='multi', chunksize=500)
+                if len(quarantined):  # defined behaviour for bad rows: kept aside with the reason, never lost silently
+                    quarantined.assign(source=source).to_sql('quarantine_trips', conn, if_exists='append', index=False)
                 conn.execute(text('INSERT INTO ingestion_batches VALUES (:source)'), {'source': source})
     finally:
         engine.dispose()
@@ -90,16 +103,18 @@ def check_drift(current, client, directory):
     except mlflow.exceptions.MlflowException as exc:
         if exc.error_code != 'RESOURCE_DOES_NOT_EXIST' and not ('alias' in str(exc).lower() and 'not found' in str(exc).lower()):
             raise
-        return {'baseline': True, 'drift_detected': False, 'drift_share': 0.0}
+        return {'baseline': True, 'drift_detected': False, 'drift_share': 0.0, 'features': {}}
     reference_file = client.download_artifacts(champion.run_id, 'reference/reference.parquet', directory)
     reference = pd.read_parquet(reference_file)
+    # Decision = our per-feature PSI/KS with thresholds from config/monitoring.yml.
+    # Evidently is kept for the human-readable HTML report.
+    decision = taxi_drift.feature_drift(reference, current, FEATURES)
     report = Report(metrics=[DataDriftPreset()])
     report.run(reference_data=reference[FEATURES], current_data=current[FEATURES])
     report.save_html(str(Path(directory) / 'drift.html'))
     report.save_json(str(Path(directory) / 'drift.json'))
-    result = report.as_dict()['metrics'][0]['result']
-    return {'baseline': False, 'drift_detected': bool(result['dataset_drift']),
-            'drift_share': float(result['share_of_drifted_columns']), 'reference_run_id': champion.run_id}
+    return {'baseline': False, 'drift_detected': decision['drift_detected'], 'drift_share': decision['drift_share'],
+            'features': decision['features'], 'reference_run_id': champion.run_id}
 
 
 @task(persist_result=False)
@@ -135,6 +150,9 @@ def train_and_register(current, client, directory, drift):
         mlflow.log_artifact(str(Path(directory) / 'drift.json'), 'drift')
     current.to_parquet(Path(directory) / 'reference.parquet', index=False)
     mlflow.log_artifact(str(Path(directory) / 'reference.parquet'), 'reference')
+    # The reference is frozen with the model version it belongs to; its hash makes it verifiable.
+    mlflow.set_tags({'reference_sha256': hashlib.sha256((Path(directory) / 'reference.parquet').read_bytes()).hexdigest(),
+                     'model_version': str(version)})
     # Promotion happens only once all artifacts are safely persisted.
     if promoted:
         client.set_registered_model_alias(MODEL_NAME, 'champion', version)
@@ -157,6 +175,15 @@ def taxi_pipeline(year=2024, month=1, limit=5000):
             registry = CollectorRegistry()
             for name, value in [('data_drift_detected', int(drift['drift_detected'])), ('data_drift_share', drift['drift_share']), ('pipeline_training_rows', result['rows']), ('model_drift_rmse_current', result['rmse']), ('model_drift_rmse_reference', result['champion_rmse'] if result['champion_rmse'] is not None else result['rmse'])]:
                 Gauge(name, name, registry=registry).set(value)
+            per_feature = {n: Gauge(n, n, ['feature'], registry=registry) for n in
+                           ('feature_drift_psi', 'feature_drift_ks', 'feature_drifted')}
+            for feature, f in drift['features'].items():
+                per_feature['feature_drift_psi'].labels(feature).set(f['psi'])
+                per_feature['feature_drift_ks'].labels(feature).set(f['ks'])
+                per_feature['feature_drifted'].labels(feature).set(int(f['drifted']))
+            Gauge('pipeline_rows_quarantined', 'Rows rejected by validation in the last ingestion', registry=registry).set(
+                current.attrs.get('quarantined_rows', 0))
+            Gauge('pipeline_champion_version', 'Model version trained by the last run', registry=registry).set(int(result['version']))
             push_to_gateway(gateway, job='taxi_pipeline', registry=registry)
         print(f'Run {run.info.run_id}: {result}')
         return result

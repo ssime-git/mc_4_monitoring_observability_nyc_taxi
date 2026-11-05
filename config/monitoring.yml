@@ -1,0 +1,11 @@
+# Single source of truth for monitoring thresholds (read by the pipeline; copied into its image).
+# Change a value here, rebuild the pipeline image, and the next run uses it. Nothing is hard-coded.
+drift:
+  psi_threshold: 0.2            # PSI >= 0.2 is the usual "significant shift" level (0.1-0.2 = moderate)
+  ks_statistic_threshold: 0.2   # KS distance between reference and current distributions (0 = identical, 1 = disjoint)
+  dataset_share_threshold: 0.3  # dataset drifts when >= 30% of features drift
+  psi_bins: 10
+  categorical_max_unique: 20    # features with <= 20 distinct values are compared by category frequency
+validation:
+  max_invalid_share: 0.2        # more than 20% quarantined rows -> the ingestion fails (upstream problem)
+  min_valid_rows: 100
