@@ -1409,7 +1409,9 @@ pipeline = [
     { name = "sqlalchemy" },
 ]
 simulator = [
+    { name = "fastapi" },
     { name = "requests" },
+    { name = "uvicorn" },
 ]
 telemetry = [
     { name = "opentelemetry-api" },
@@ -1480,7 +1482,11 @@ pipeline = [
     { name = "scikit-learn", specifier = "==1.6.1" },
     { name = "sqlalchemy", specifier = ">=2,<3" },
 ]
-simulator = [{ name = "requests" }]
+simulator = [
+    { name = "fastapi" },
+    { name = "requests" },
+    { name = "uvicorn" },
+]
 telemetry = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },

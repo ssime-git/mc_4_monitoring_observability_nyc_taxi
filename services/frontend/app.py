@@ -5,6 +5,8 @@ import os
 import hmac
 from urllib.parse import urlsplit
 import streamlit.components.v1 as components
+from metric_guides import render_guide
+from demo import demo_page
 
 def taxi_api_call(payload):
     # Use environment variable for the prediction API URL
@@ -95,6 +97,7 @@ def require_login():
 
 def embedded_page(title, url):
     st.title(title)
+    render_guide(title)
     if not url:
         st.info("Prefect sera disponible ici une fois déployé et PREFECT_UI_URL configurée.")
         return
@@ -111,6 +114,7 @@ def reports_page():
     from mlflow.artifacts import load_text
     import mlflow
     st.title("Qualité et dérive — Evidently")
+    render_guide("Rapports Evidently")
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow_server:5000"))
     client = MlflowClient()
     try:
@@ -149,7 +153,7 @@ def main():
     with st.sidebar:
         st.title("NYC Taxi")
         page = st.radio("Navigation", [
-            "Prédiction", "Prefect", "Monitoring — Métier",
+            "Démo guidée", "Prédiction", "Prefect", "Monitoring — Métier",
             "Monitoring — Système", "Monitoring — Diagnostic", "Rapports Evidently", "Prometheus", "MLflow",
         ])
         if st.button("Se déconnecter", use_container_width=True):
@@ -164,7 +168,9 @@ def main():
         "Prometheus": os.getenv("PROMETHEUS_UI_URL", "http://localhost:9090"),
         "MLflow": os.getenv("MLFLOW_UI_URL", "http://localhost:5000"),
     }
-    if page == "Prédiction":
+    if page == "Démo guidée":
+        demo_page()
+    elif page == "Prédiction":
         prediction_page()
     elif page == "Rapports Evidently":
         reports_page()

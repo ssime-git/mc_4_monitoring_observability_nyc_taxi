@@ -25,6 +25,25 @@ La première construction compile MinIO depuis un tag du code officiel : ses
 anciennes images publiques ne sont plus téléchargeables sur les registres
 historiques. Cette étape peut prendre plusieurs minutes, puis bénéficie du cache.
 
+## Animer la démo depuis Streamlit
+
+La page d’accueil **Démo guidée** regroupe les actions et leurs explications :
+
+1. Calculer un prix pour un trajet d’exemple.
+2. Démarrer ou mettre en pause le simulateur, régler son rythme et la probabilité
+   de requêtes invalides. Ces dernières produisent des rejets 422, pas des 500.
+3. Observer les compteurs, le débit et le p99 natifs Streamlit ; un indicateur
+   confirme la collecte réelle de la Prediction API par Prometheus. Les mesures
+   s’actualisent toutes les cinq secondes ; les débits utilisent une fenêtre d’une minute.
+4. Demander un entraînement et suivre son statut sans quitter cette page.
+
+Les volets pédagogiques expliquent le calcul et l’interprétation des métriques,
+avec des schémas et des exemples explicitement distincts des données en direct.
+Les interfaces techniques restent accessibles dans le menu pour approfondir.
+Le simulateur expose son contrôle sur le port **interne** 8010, sans publication
+sur l’hôte. Sa pause n’annule pas une requête déjà en vol. Son état et ses compteurs
+repartent à leurs valeurs initiales au redémarrage de son conteneur.
+
 ## Architecture
 
 - **Prefect Server / UI** (`4200`) : déploiement, planning et état des exécutions.

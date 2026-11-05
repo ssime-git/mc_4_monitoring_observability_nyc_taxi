@@ -11,7 +11,7 @@ api = [{include-group = "ml"}, {include-group = "telemetry"}, "fastapi", "uvicor
 frontend = ["streamlit>=1.45,<2", "requests", "mlflow-skinny==2.22.2"]
 pipeline = [{include-group = "ml"}, {include-group = "telemetry"}, "prefect==3.4.25", "prefect-docker==0.6.6", "evidently==0.6.7", "boto3"]
 mlflow = ["mlflow==2.22.2", "boto3", "psycopg2-binary"]
-simulator = ["requests"]
+simulator = ["requests", "fastapi", "uvicorn"]
 dev = ["pytest", "httpx"]
 
 [tool.pytest.ini_options]

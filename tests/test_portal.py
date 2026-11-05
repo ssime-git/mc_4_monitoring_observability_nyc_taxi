@@ -18,7 +18,7 @@ def test_login_navigation_and_logout(monkeypatch):
     app.text_input[1].set_value('test-password')
     app.button[0].click().run()
     assert not app.exception
-    assert app.sidebar.radio[0].value == 'Prédiction'
+    assert app.sidebar.radio[0].value == 'Démo guidée'
     app.sidebar.radio[0].set_value('Prefect').run()
     assert app.info
     app.sidebar.radio[0].set_value('Monitoring — Système').run()

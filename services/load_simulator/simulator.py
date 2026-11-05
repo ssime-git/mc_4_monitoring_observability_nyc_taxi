@@ -76,7 +76,7 @@ def generate_valid_request():
 
 def generate_malformed_request():
     """Generate a deliberately malformed request to trigger errors."""
-    error_type = random.choice(["missing_field", "bad_type", "extreme_values"])
+    error_type = random.choice(["missing_field", "bad_type"])
 
     if error_type == "missing_field":
         req = generate_valid_request()
@@ -109,66 +109,62 @@ def send_request(payload):
         return None, 0
 
 
-def main():
-    logger.info(f"Starting load simulator: {REQUESTS_PER_SECOND} req/s, {ERROR_RATE*100:.0f}% error rate")
-    logger.info(f"Target: {PREDICTION_API_URL}/fare_predict")
+# Control plane used by the authenticated Streamlit portal (internal Docker network).
+import threading
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
-    # Wait for prediction API to be ready
-    logger.info("Waiting for Prediction API to be ready...")
-    for _ in range(60):
-        try:
-            resp = requests.get(f"{PREDICTION_API_URL}/health", timeout=5)
-            health = resp.json()
-            if health.get("model_loaded"):
-                logger.info("Prediction API is ready with model loaded!")
-                break
-            else:
-                logger.info("API is up but model not loaded yet...")
-        except:
-            pass
-        time.sleep(10)
-
-    delay = 1.0 / REQUESTS_PER_SECOND
-    request_count = 0
-    success_count = 0
-    error_count = 0
-
-    while True:
-        try:
-            # Decide: valid or malformed request
-            if random.random() < ERROR_RATE:
-                payload = generate_malformed_request()
-                is_error_request = True
-            else:
-                payload = generate_valid_request()
-                is_error_request = False
-
-            status, latency = send_request(payload)
-            request_count += 1
-
-            if status and 200 <= status < 300:
-                success_count += 1
-            else:
-                error_count += 1
-
-            # Log periodic summary
-            if request_count % 50 == 0:
-                logger.info(
-                    f"Stats: {request_count} total, {success_count} success, "
-                    f"{error_count} errors ({error_count/max(request_count,1)*100:.1f}%)"
-                )
-
-            # Add jitter for more realistic traffic patterns
-            jitter = random.uniform(0.5, 1.5)
-            time.sleep(delay * jitter)
-
-        except KeyboardInterrupt:
-            logger.info("Shutting down load simulator")
-            break
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            time.sleep(1)
+lock = threading.Lock()
+stop = threading.Event()
+state = dict(running=True, requests_per_second=REQUESTS_PER_SECOND, error_rate=ERROR_RATE,
+             sent=0, succeeded=0, rejected=0, failed=0, last_status=None)
 
 
-if __name__ == "__main__":
-    main()
+class Settings(BaseModel):
+    running: bool
+    requests_per_second: float = Field(ge=0.2, le=20)
+    error_rate: float = Field(ge=0, le=1)
+
+
+def traffic_loop():
+    while not stop.is_set():
+        with lock:
+            settings = state.copy()
+        if not settings['running']:
+            stop.wait(0.2)
+            continue
+        payload = generate_malformed_request() if random.random() < settings['error_rate'] else generate_valid_request()
+        status, latency = send_request(payload)
+        with lock:
+            state['sent'] += 1
+            state['last_status'] = status
+            key = 'succeeded' if status and 200 <= status < 300 else ('rejected' if status == 422 else 'failed')
+            state[key] += 1
+        stop.wait(random.uniform(.8, 1.2) / settings['requests_per_second'])
+
+
+@asynccontextmanager
+async def lifespan(app):
+    stop.clear()
+    thread = threading.Thread(target=traffic_loop, daemon=True)
+    thread.start()
+    yield
+    stop.set()
+    thread.join(timeout=12)
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get('/status')
+def status():
+    with lock:
+        return state.copy()
+
+
+@app.put('/settings')
+def settings(value: Settings):
+    with lock:
+        state.update(value.model_dump())
+        return state.copy()
