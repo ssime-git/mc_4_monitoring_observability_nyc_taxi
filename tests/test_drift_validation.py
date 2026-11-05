@@ -16,7 +16,7 @@ def sample(n=3000, seed=0, shift=0.0):
         'pu_location_id': np.clip(rng.normal(130 + shift, 40, n), 1, 265).round(),
         'do_location_id': np.clip(rng.normal(140, 50, n), 1, 265).round(),
         'passenger_count': rng.choice([1, 2, 3], n, p=[.7, .2, .1]),
-        'pickup_hour': rng.integers(0, 24, n), 'pickup_dayofweek': rng.integers(0, 7, n),
+        'pickup_hour': np.clip(rng.normal(14, 4, n), 0, 23).round(), 'pickup_dayofweek': rng.integers(0, 7, n),
         'pickup_month': np.ones(n), 'pickup_weekday': rng.integers(0, 2, n)})
 
 
@@ -82,3 +82,11 @@ def test_too_many_invalid_rows_fails_loudly():
     raw.loc[:100, 'PULocationID'] = 9999
     with pytest.raises(ValueError, match='20%'):
         flow.prepare(raw)
+
+
+def test_simulated_drift_scenario_crosses_the_configured_threshold():
+    reference = sample(seed=1)
+    reference['pu_location_id'] = reference['pu_location_id'].clip(upper=160)
+    result = taxi_drift.feature_drift(reference, flow.inject_drift(sample(seed=2)), FEATURES)
+    assert result['drift_detected'] is True
+    assert flow.inject_drift(reference).pu_location_id.max() <= 265

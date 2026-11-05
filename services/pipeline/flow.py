@@ -160,15 +160,25 @@ def train_and_register(current, client, directory, drift):
     return {'version': version, 'promoted': promoted, 'rmse': rmse, 'champion_rmse': champion_rmse, 'rows': len(data)}
 
 
+def inject_drift(df):
+    """Demo scenario: simulate an upstream change (new zones, other hours, bigger groups).
+    Applied to the data compared with the reference only; training data and the stored reference stay untouched."""
+    shifted = df.copy()
+    shifted['pu_location_id'] = (shifted.pu_location_id + 100).clip(upper=265)
+    shifted['pickup_hour'] = (shifted.pickup_hour + 8) % 24
+    shifted['passenger_count'] = (shifted.passenger_count + 2).clip(upper=6)
+    return shifted
+
+
 @flow(name='nyc-taxi-demo', log_prints=True, persist_result=False)
-def taxi_pipeline(year=2024, month=1, limit=5000):
+def taxi_pipeline(year=2024, month=1, limit=5000, simulate_drift=False):
     current = ingest(year, month, limit)
     mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
     mlflow.set_experiment(EXPERIMENT)
     client = MlflowClient()
     with mlflow.start_run() as run, tempfile.TemporaryDirectory() as tmp:
         mlflow.set_tags({'source_month': f'{year}-{month:02d}', 'pipeline': 'prefect'})
-        drift = check_drift(current, client, tmp)
+        drift = check_drift(inject_drift(current) if simulate_drift else current, client, tmp)
         result = train_and_register(current, client, tmp, drift)
         gateway = os.getenv('PUSHGATEWAY_URL')
         if gateway:
