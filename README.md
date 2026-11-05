@@ -1,378 +1,192 @@
-# NYC Taxi — monitoring et observabilité
+# NYC Taxi — ML monitoring & observability masterclass
 
-Démonstration MLOps entièrement démarrée par Docker Compose : téléchargement de
-vraies données NYC TLC, contrôles qualité, stockage PostgreSQL, rapport de dérive,
-entraînement Random Forest et enregistrement dans MLflow. Les artefacts sont
-stockés dans MinIO ; aucun modèle préentraîné n'est embarqué dans le dépôt.
+A fare-prediction service you can **break on purpose** and watch from three angles: metrics (Prometheus/Grafana),
+logs (Loki) and traces (Tempo), with alerts delivered through Alertmanager. Everything starts with one command.
+The centre of the demo is the **Streamlit portal**: one page per use case, each with a trigger, live monitoring and
+observability, in English.
 
-## Lancer la démonstration
+Before every session open [`DEMO_CHECKLIST.md`](DEMO_CHECKLIST.md): it tracks what is verified and how.
 
-Prérequis : Docker Compose et accès au daemon Docker. Internet est nécessaire
-pour les images et le téléchargement du Parquet TLC.
+## Quick start
+
+Prerequisites: Docker with Compose v2 (daemon access) and internet (images + NYC TLC Parquet). For the tests: [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cp .env.example .env
-# Renseigner PORTAL_PASSWORD dans .env.
-docker compose up --build -d
+make up      # creates .env from .env.example if missing, builds and starts everything
+make down    # stops everything (data is kept)   ·   make reset  # stops and erases all data
 ```
 
-Ouvrir **http://localhost:8501** et se connecter avec `demo` et le mot de passe
-choisi. Le portail rassemble prédiction, Prefect, dashboards Grafana, rapports
-Evidently, Prometheus et MLflow. Au premier lancement, attendre la fin du flow
-Prefect : l'API de prédiction répond 503 tant que le champion n'est pas disponible.
+First start: wait for the first Prefect run to finish (~2 min). The API answers 503 and `/health` is red until a champion model exists.
+The first build also compiles MinIO from its official source tag (public images are no longer published): several minutes, then cached.
 
-La première construction compile MinIO depuis un tag du code officiel : ses
-anciennes images publiques ne sont plus téléchargeables sur les registres
-historiques. Cette étape peut prendre plusieurs minutes, puis bénéficie du cache.
+### URLs and demo credentials
 
-## Animer la démo depuis Streamlit
+| Tool | URL | Login |
+|---|---|---|
+| **Streamlit portal** (start here) | http://localhost:8501 | `demo` / value of `PORTAL_PASSWORD` in `.env` |
+| Grafana | http://localhost:3000 | `admin` / `GRAFANA_ADMIN_PASSWORD` (anonymous Viewer is enabled for the iframes) |
+| Prometheus | http://localhost:9090 | – |
+| Alertmanager | http://localhost:9093 | – |
+| MLflow | http://localhost:5000 | – |
+| Evidently reports | in the portal (**Deep dive → Evidently reports**), stored in MLflow/MinIO | portal login |
+| Prefect | http://localhost:4200 | – |
+| MinIO console | http://localhost:9001 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
+| Prediction API | http://localhost:8000 (`/health`, `/metrics`, `/docs`) | – |
+| Demo alert receiver | http://localhost:8020/alerts | – |
 
-La page d’accueil **Démo guidée** regroupe les actions et leurs explications :
+`.env.example` ships **demo-only** values (`demo-change-me`). `.env` is git-ignored; no secret lives in the repository.
+Change every password before exposing a port beyond localhost.
 
-1. Calculer un prix pour un trajet d’exemple.
-2. Démarrer ou mettre en pause le simulateur, régler son rythme et la probabilité
-   de requêtes invalides. Ces dernières produisent des rejets 422, pas des 500.
-3. Observer les compteurs, le débit et le p99 natifs Streamlit ; un indicateur
-   confirme la collecte réelle de la Prediction API par Prometheus. Les mesures
-   s’actualisent toutes les cinq secondes ; les débits utilisent une fenêtre d’une minute.
-4. Demander un entraînement et suivre son statut sans quitter cette page.
+## The story (Streamlit pages)
 
-Les volets pédagogiques expliquent le calcul et l’interprétation des métriques,
-avec des schémas et des exemples explicitement distincts des données en direct.
-Les interfaces techniques restent accessibles dans le menu pour approfondir.
-Le simulateur expose son contrôle sur le port **interne** 8010, sans publication
-sur l’hôte. Sa pause n’annule pas une requête déjà en vol. Son état et ses compteurs
-repartent à leurs valeurs initiales au redémarrage de son conteneur.
+Each page follows the same rhythm: **story → trigger → monitoring (what the numbers say) → observability (why)**.
+Use *Start here → Reset to a healthy baseline* between stories.
+
+| Page | You do | You see | Alert |
+|---|---|---|---|
+| 1 · A normal day | quote a fare | RED metrics; the request's own log line via its `request_id` | none |
+| 2 · A slow service | inject 1.5 s latency | p50/p95/p99 vs the 1 s line, slowest traces, slow log lines | `HighLatencyP99` |
+| 3 · Data drift | run the pipeline on shifted data | PSI per feature vs threshold, dataset flag | `DataDriftDetected` |
+| 4 · Bad data | raise the share of invalid requests | 422s climb, 5xx stays 0; logs name the fields | none (on purpose) |
+| 5 · An outage | stop the API | `up`→0, `/health` unreachable, notification, recovery | `ServiceDown` |
+| 6 · Model quality | real fares jump +100% | online RMSE vs validation RMSE | `OnlineModelErrorHigh` |
+| 7 · Business impact | traffic collapses | quotes/min and revenue/min | `BusinessThroughputLow` |
+
+Other sections: **Observe** (alerts & notifications, logs & traces, Grafana dashboards) and **Deep dive**
+(Prefect, MLflow, Evidently, Prometheus, Alertmanager, manual prediction) keep the full tools one click away through iframes.
+
+## Scripted scenarios (no browser needed)
+
+```bash
+make demo-normal       # normal traffic → no alert for 90 s
+make demo-latency      # HighLatencyP99
+make demo-drift        # DataDriftDetected
+make demo-outage       # ServiceDown
+make demo-performance  # OnlineModelErrorHigh (bonus)
+make demo-business     # BusinessThroughputLow (bonus)
+```
+
+Each script injects the fault, queries the Prometheus and Alertmanager APIs and the webhook, prints the measured delay
+(seconds since injection), removes the fault and waits for the alert to resolve. Measured delays are recorded in `DEMO_CHECKLIST.md`.
 
 ## Architecture
 
-- **Prefect Server / UI** (`4200`) : déploiement, planning et état des exécutions.
-  Une base SQLite persistante est utilisée pour cette démo locale mono-serveur.
-- **Bootstrap** : crée le work pool Docker, le déploiement et le premier run.
-- **monitoring_init** : donne au rôle Viewer l’accès au dossier des dashboards Grafana.
-- **Worker Docker** : interroge Prefect et lance un conteneur par flow. Les tâches
-  tournent dans ce conteneur, supprimé automatiquement à la fin (`auto_remove`).
-  Le worker utilise le socket Docker de l'hôte.
-- **Flow** : télécharge le Parquet TLC de janvier 2024, prépare jusqu'à
-  `DEMO_ROWS=5000` lignes, valide et charge PostgreSQL sans doublons à la relance.
-  Compare les nouvelles données à la référence du champion, puis entraîne et
-  évalue un candidat. Un planning quotidien permet de rejouer le flow ; les
-  paramètres année/mois/limite sont modifiables dans Prefect.
-- **PostgreSQL** (`5432`) : données d'entraînement et identifiants d'ingestion.
-- **MLflow** (`5000`) : expériences, métriques, versions et alias `champion`.
-  Les métadonnées sont dans une SQLite persistante distincte de Prefect.
-- **MinIO** (`9000`, console `9001`) : bucket privé `mlflow-artifacts`, créé
-  automatiquement. MLflow sert de proxy pour les transferts S3 : les clients
-  n'ont ni volume modèle partagé ni identifiants S3 à gérer.
-- **Prediction API** (`8000`) : charge le champion depuis MLflow, vérifie les
-  changements toutes les 60 secondes et expose `/fare_predict` et `/metrics`.
-- **Streamlit** (`8501`) : authentification et navigation de démonstration.
-- **Load simulator** : génère le trafic de prédiction.
-- **Prometheus** (`9090`) et **Pushgateway** : métriques API et dernier résultat
-  du pipeline éphémère. Les règles d'alerte sont évaluées dans Prometheus.
-- **Promtail → Loki** (`3100`) : logs Docker. Les logs des flows sont également
-  conservés dans Prefect ; l'auto-suppression peut précéder la collecte Promtail.
-- **OpenTelemetry → Tempo** (`4317`/`3200`) : traces de la Prediction API.
-- **Grafana** (`3000`) : trois dashboards métier, système et diagnostic.
+```mermaid
+flowchart LR
+    User((Presenter)) --> Portal["Streamlit :8501"]
+    Portal -->|controls| Sim[Load simulator]
+    Portal -->|latency injection| API
+    Portal -->|stop/start| Ctl[Controller]
+    Portal -->|run pipeline| Prefect
+    Sim -->|traffic + delayed labels| API["Prediction API :8000"]
+    API -->|/metrics| Prom[Prometheus]
+    API -->|JSON logs| Loki
+    API -->|OTLP spans| Tempo
+    Prefect["Prefect server + Docker worker"] -->|flow container| Flow["Flow: ingest → validate → drift → train"]
+    Flow -->|rows, quarantine| PG[(PostgreSQL)]
+    Flow -->|models, reference, reports| MLflow --> MinIO[(MinIO)]
+    Flow -->|drift, RMSE| Push[Pushgateway] --> Prom
+    API -->|champion alias| MLflow
+    Prom --> Rules{{Alert rules}} --> AM[Alertmanager] -->|webhook| Hook[Demo receiver]
+    Prom --> Graf[Grafana]
+    Loki --> Graf
+    Tempo --> Graf
+```
 
-Les services partagent le réseau `nyc-taxi-ml`. Les anciennes Data API,
-Training API et boucles ETL ont été remplacées par les tâches Prefect.
+### Observability circuits
 
-## Qualité, dérive et modèles
+```mermaid
+flowchart LR
+    API[Prediction API] -->|"/metrics (every 5 s)"| Prom[Prometheus]
+    Flow[Pipeline container] -->|"last drift / RMSE"| Push[Pushgateway] --> Prom
+    Prom -->|rules, for: duration| AM[Alertmanager] -->|webhook| Notif[Notification]
+    Docker[Container stdout] --> Promtail --> Loki
+    API -->|spans| Tempo
+    Grafana --> Prom & Loki & Tempo
+```
 
-Des colonnes absentes, moins de 100 lignes valides ou plus de 20 % de lignes
-invalides bloquent l'ingestion. Une dérive seule ne bloque pas l'entraînement.
-Le candidat et le champion sont comparés sur le même échantillon de validation
-(seed fixe, suffisant pour cette démo ; une évaluation temporelle indépendante
-serait préférable pour un cas réel). Le candidat n'est promu que si sa RMSE
-est inférieure, ou si aucun champion n'existe.
+Logs and metrics are linked by the **`request_id`** (returned in the `X-Request-ID` response header, present in every
+log line with `trace_id` and `model_version`). Loki labels stay low-cardinality; ids are fields inside the JSON line.
 
-Chaque run MLflow conserve la référence Parquet, les métriques et le résumé de
-dérive. Dès le deuxième run, Evidently produit aussi les rapports HTML et JSON,
-consultables et téléchargeables dans Streamlit. La référence utilisée est celle
-du champion précédent ; elle ne change pas tant que ce champion reste en place.
-
-Les volumes conservent données SQL, métadonnées et objets MinIO après l'arrêt.
-`docker compose down` les préserve ; `docker compose down -v` les efface et permet
-une démonstration entièrement neuve.
-
-## Comprendre les pipelines
-
-Les flèches sont libellées pour distinguer les **appels** des **données
-échangées**. L'ingestion est pilotée par le flow : NYC TLC ne pousse pas les
-fichiers vers notre infrastructure.
-
-### Vue d'ensemble : qui pilote quoi ?
+### Pipeline (Prefect flow `nyc-taxi-demo`)
 
 ```mermaid
 flowchart TB
-    User[Utilisateur] --> Portal["Streamlit :8501<br/>Connexion et navigation"]
-    Portal -->|Demande de prédiction| API["Prediction API :8000"]
-    Portal -.->|Iframe dans le navigateur| UI["Prefect UI :4200"]
-    Portal -.->|Iframes dans le navigateur| Views["Grafana / Prometheus / MLflow"]
-    subgraph Control[Orchestration permanente]
-        UI --> Server[Prefect Server / API]
-        Boot[Bootstrap] -->|Déploie et soumet le premier run| Server
-        Worker[Docker worker] -->|Interroge le work pool| Server
-        Worker -->|Demande la création du conteneur| Docker[Moteur Docker de l'hôte]
-    end
-    subgraph Execution[Un conteneur éphémère par flow]
-        Flow["Flow nyc-taxi-demo<br/>Ingestion → Dérive → Entraînement"]
-    end
-    Docker -->|Lance| Flow
-    Flow -->|Télécharge le Parquet| TLC[NYC TLC]
-    Flow -->|Écrit et lit les données préparées| DB[(PostgreSQL métier)]
-    Flow -->|Enregistre modèles et rapports| ML[MLflow]
-    ML -->|Stocke et lit les artefacts via S3| S3[(MinIO)]
-    API -->|Résout champion et télécharge le modèle| ML
-    Flow -.->|États et logs du run| Server
-    Portal -->|Charge les rapports Evidently via MLflow| ML
+    In["year, month, limit, simulate_drift"] --> Download[Download TLC Parquet]
+    Download --> Validate{"pandera schema: types, bounds, nulls"}
+    Validate -->|bad rows| Quarantine[(quarantine_trips + reason)]
+    Validate -->|"> 20% bad"| Fail[Flow fails loudly]
+    Validate -->|valid rows| Store[(training_trips, idempotent batch key)]
+    Store --> Drift["PSI / KS per feature vs the champion's frozen reference<br/>thresholds: config/monitoring.yml"]
+    Drift --> Train[Train candidate, score candidate AND champion on the same validation split]
+    Train --> Register[Register version, log reference + SHA-256 + drift summary]
+    Register --> Promote{Better RMSE?}
+    Promote -->|yes| Champion[Move alias champion]
+    Promote -->|no| Keep[Keep champion]
+    Champion --> Push[Publish metrics to Pushgateway]
+    Keep --> Push
 ```
 
-Le worker reste actif entre les exécutions. Il **ne contient pas les tâches** :
-il lance un autre conteneur utilisant l'image `nyc-taxi-pipeline:demo`. Les tâches
-`ingest`, `check_drift` et `train_and_register` s'y exécutent dans cet ordre.
-
-### Au lancement de la stack
-
-```mermaid
-flowchart TB
-    Start["docker compose up --build -d"] --> Build[Construire les images avec uv.lock et compiler MinIO]
-    Build --> Infra["Démarrer PostgreSQL, MinIO, Prefect et l'observabilité"]
-    Infra --> Permissions["monitoring_init configure les permissions Viewer de Grafana"]
-    Infra --> Bucket["minio_init crée le bucket mlflow-artifacts"]
-    Bucket --> ML[MLflow démarre avec son proxy S3]
-    ML --> Ready{"PostgreSQL, MLflow et Prefect healthy ?"}
-    Infra --> Ready
-    Ready -->|Oui| Bootstrap["Bootstrap : work pool taxi-docker et déploiement demo"]
-    Ready -->|Non| Wait[Le bootstrap attend les dépendances]
-    Bootstrap --> Submit[Soumettre le premier run et planifier toutes les 24 h]
-    Submit --> Worker[Démarrer le worker Docker]
-    Worker --> Run[Lancer le premier conteneur de flow]
-    ML --> Serving["Démarrer Prediction API, Streamlit et le simulateur"]
-    Serving --> NoModel["Prédiction : 503 tant qu'aucun modèle ne peut être chargé"]
-    Run --> Champion[Entraîner et promouvoir le premier champion]
-    Champion --> Load[La Prediction API charge le champion depuis MLflow]
-    Load --> Available[Prédictions disponibles dans Streamlit]
-```
-
-`minio_init` et `prefect_bootstrap` sont des services ponctuels : leur état
-**Exited (0)** signifie qu'ils ont terminé correctement. Le démarrage du portail
-n'attend pas la fin de l'entraînement. Sur un redémarrage avec volumes conservés,
-un champion déjà enregistré peut être chargé immédiatement.
-
-### Cycle de vie d'une exécution Prefect
+### Prediction and delayed labels
 
 ```mermaid
 sequenceDiagram
-    actor U as Utilisateur
-    participant P as Prefect Server
-    participant W as Docker worker
-    participant D as Docker daemon
-    participant F as Conteneur du flow
-    U->>P: Lancement manuel depuis l'UI
-    Note over P: Ou premier run du bootstrap / planning quotidien
-    W->>P: Interroger le work pool taxi-docker
-    P-->>W: Run prêt à exécuter
-    W->>D: Créer et lancer le conteneur du flow
-    D->>F: Exécuter le code du déploiement
-    F->>P: États des tâches et logs
-    Note over F: ingest → check_drift → train_and_register
-    F->>P: État final du flow
-    F-->>D: Fin du processus
-    D->>D: Supprimer le conteneur avec auto_remove
-    Note over P,W: Serveur et worker restent actifs
-```
-
-Le déploiement limite à **une exécution simultanée**. Une erreur remonte dans
-Prefect ; `ingest` dispose de trois nouvelles tentatives espacées de dix secondes.
-Les tâches de dérive et d'entraînement n'ont pas de retry automatique configuré.
-Les artefacts déjà écrits dans MinIO et les données SQL survivent au conteneur.
-
-### Ingestion : du Parquet aux données d'entraînement
-
-```mermaid
-flowchart TB
-    Input["Paramètres : year, month, limit"] --> Download["Le flow télécharge le Parquet mensuel depuis NYC TLC"]
-    Download --> Temp[Parquet dans un répertoire temporaire du conteneur]
-    Temp --> Read[Lire les premières lignes, au maximum limit]
-    Read --> Prepare["Normaliser les colonnes, calculer les variables temporelles et total_fare"]
-    Prepare --> Columns{Colonnes requises présentes ?}
-    Columns -->|Non| Fail[Erreur de validation : ingestion en échec]
-    Columns -->|Oui| Quality{"Au moins 80 % de lignes valides<br/>et au moins 100 lignes après filtrage ?"}
-    Quality -->|Non| Fail
-    Quality -->|Oui| Key["Calculer la clé de lot : URL + limite + version de préparation"]
-    Key --> Seen{Clé déjà dans ingestion_batches ?}
-    Seen -->|Oui| Skip[Ne pas réinsérer le lot]
-    Seen -->|Non| Store["Transaction SQL : écrire training_trips et ingestion_batches"]
-    Skip --> Current[Retourner les données courantes pour le contrôle de dérive]
-    Store --> Current
-```
-
-Le fichier brut temporaire est supprimé après lecture. PostgreSQL conserve les
-**variables préparées**, pas le fichier brut. Rejouer les mêmes paramètres ne
-réinsère pas le lot ; changer la limite crée une autre clé et peut produire un
-échantillon qui recoupe les lignes déjà stockées.
-
-### Dérive, entraînement et promotion du modèle
-
-```mermaid
-flowchart TB
-    Current[Données courantes validées] --> Champion{Champion déjà enregistré ?}
-    Champion -->|Non| Baseline["Premier run : baseline=true, sans rapport comparatif"]
-    Champion -->|Oui| Reference[Charger le Parquet de référence du run du champion via MLflow]
-    Reference --> Drift[Comparer les features avec Evidently]
-    Current --> Drift
-    Drift --> Reports["Produire drift.html, drift.json et les scores"]
-    Baseline --> TrainData[Lire toutes les données de training_trips]
-    Reports --> TrainData
-    TrainData --> Split["Découpage train 80 % / validation 20 %, seed 42"]
-    Split --> Fit[Entraîner un candidat Random Forest]
-    Fit --> Evaluate[Calculer RMSE et R² sur la validation]
-    Evaluate --> Compare[Évaluer aussi le champion sur cette même validation, s'il existe]
-    Compare --> Register[Enregistrer le candidat comme nouvelle version MLflow]
-    Register --> Persist["Sauvegarder métriques, résumé, rapports disponibles et référence courante dans MinIO via MLflow"]
-    Persist --> Better{"Aucun champion<br/>ou RMSE candidat inférieure ?"}
-    Better -->|Oui| Promote[Déplacer l'alias champion vers le candidat]
-    Better -->|Non, y compris égalité| Keep[Conserver le champion existant]
-    Promote --> Metrics[Publier les métriques du pipeline vers Pushgateway]
-    Keep --> Metrics
-```
-
-**Actuellement chaque flow qui passe l'ingestion entraîne un candidat**, même
-sans dérive. La dérive est un indicateur, pas une condition de déclenchement ou de
-blocage. Le seuil qualité se trouve dans l'ingestion. Les rapports comparatifs
-apparaissent dès qu'un champion et sa référence sont disponibles.
-
-La référence de chaque candidat est l'échantillon courant ; le modèle, lui, est
-entraîné sur l'ensemble des données SQL. Le contrôle suivant reprend la
-référence du **champion**, qui reste stable lorsqu'un candidat n'est pas promu.
-La promotion arrive après l'enregistrement des artefacts. Une erreur ultérieure
-de publication vers Pushgateway peut donc faire échouer le flow alors que le
-modèle a déjà été enregistré et éventuellement promu.
-
-### Prédiction et mise à jour du modèle en mémoire
-
-```mermaid
-sequenceDiagram
-    actor U as Utilisateur connecté
-    participant S as Streamlit
+    participant C as Client / simulator
     participant A as Prediction API
     participant M as MLflow
-    participant O as MinIO
-    Note over A: Au démarrage puis toutes les 60 secondes
-    A->>M: Résoudre NYC_Taxi_Fare_Model@champion
-    alt Une nouvelle version est disponible
-        A->>M: Télécharger le modèle
-        M->>O: Lire les artefacts S3
-        O-->>M: Artefacts
-        M-->>A: Modèle à charger en mémoire
+    A->>M: every 60 s: resolve NYC_Taxi_Fare_Model@champion (reload if new)
+    C->>A: POST /fare_predict
+    alt invalid input
+        A-->>C: 422 (fields only), counted + logged
+    else no model
+        A-->>C: 503
+    else ok
+        A-->>C: predicted_fare + X-Request-ID
     end
-    U->>S: Renseigner le trajet et cliquer sur Predict Fare
-    S->>A: POST /fare_predict
-    alt Requête invalide
-        A-->>S: 422 — validation du schéma
-    else Aucun modèle en mémoire
-        A->>M: Essayer de charger le champion immédiatement
-        Note over A,M: 503 si le chargement reste impossible
-    end
-    Note over A: Avec un modèle disponible et une requête valide
-    A->>A: Construire les 9 features et appeler model.predict
-    A-->>S: predicted_fare
-    S-->>U: Afficher le prix estimé
+    Note over C: later, the real fare is known
+    C->>A: POST /feedback {request_id, actual_fare}
+    A->>A: online RMSE counters updated
 ```
 
-La prédiction ne lit pas PostgreSQL et ne lance aucun flow Prefect. Le modèle
-chargé reste en mémoire entre les requêtes. Si une vérification périodique échoue,
-un modèle déjà chargé reste utilisable. Les erreurs d'inférence retournent 500.
+## What is monitored, and where it is defined
 
-### Rapports Evidently : stockage et consultation
+| Concern | Where |
+|---|---|
+| RED metrics, latency histogram (p50/p95/p99), bounded labels | `services/prediction_api/app.py` |
+| Real `/health` (loads model **and** runs a smoke prediction) | same file, `GET /health` |
+| Input validation (API) | Pydantic bounds → 422 + `invalid_requests_total` |
+| Input validation (batch) | `services/pipeline/taxi_validation.py` (pandera), bad rows quarantined |
+| Drift thresholds | `config/monitoring.yml` (PSI ≥ 0.2, KS ≥ 0.2, ≥ 30% features) |
+| Frozen reference | MLflow artifact of the champion run + `reference_sha256` tag |
+| Alert rules | `services/prometheus/alert_rules.yml`, unit-tested with promtool |
+| Runbooks | `docs/RUNBOOKS.md` (each alert links to its section) |
+| Alert routing | `services/alertmanager/alertmanager.yml` → demo webhook |
+| Dashboards (provisioned from files) | `services/grafana/dashboards/` — **L0 “Is it OK?”** first, then L1/L2/L3 |
+| Scrape interval | 5 s (demo choice; rule windows are 1 m, ≥ 12× the interval) |
 
-```mermaid
-sequenceDiagram
-    participant F as Conteneur du flow
-    participant M as MLflow
-    participant O as MinIO
-    actor U as Utilisateur connecté
-    participant S as Streamlit
-    F->>M: Enregistrer les artefacts du run
-    M->>O: Écrire modèle, référence et résumé de dérive
-    opt Une référence précédente existe
-        M->>O: Écrire drift/drift.html et drift/drift.json
-    end
-    U->>S: Ouvrir Rapports Evidently et choisir un run
-    S->>M: Lister les derniers runs et charger le résumé
-    M->>O: Lire drift/summary.json
-    O-->>M: Résumé
-    M-->>S: Résumé
-    alt Run terminé avec rapport comparatif
-        S->>M: Charger drift/drift.html
-        M->>O: Lire le rapport HTML
-        O-->>M: HTML
-        M-->>S: HTML
-        S-->>U: Affichage intégré et téléchargement
-    else Première baseline ou run non terminé
-        S-->>U: Message expliquant l'absence de rapport
-    end
-```
+There is no LLM/RAG component in this demo, so LLM-specific checks are not applicable (see `DEMO_CHECKLIST.md`).
 
-Le rapport ne dépend pas de la survie du conteneur d'entraînement. Streamlit le
-récupère via MLflow, qui accède au bucket privé MinIO. Le portail affiche les
-30 derniers runs de l'expérience.
-
-### Observabilité : trois circuits complémentaires
-
-```mermaid
-flowchart TB
-    API[Prediction API] -->|Expose /metrics| Prom[Prometheus]
-    Flow[Conteneur du flow] -->|Pousse scores de dérive, RMSE et nombre de lignes| Push[Pushgateway]
-    Push -->|Expose les dernières valeurs| Prom
-    Prom --> Rules[Évaluer les règles d'alerte]
-    Containers[Logs des conteneurs de la stack] --> Tail[Promtail]
-    Tail --> Loki[Loki]
-    API -->|Spans OpenTelemetry via OTLP| Tempo[Tempo]
-    Flow -.->|États et logs des tâches| Prefect[Prefect Server / UI]
-    Grafana[Grafana] -->|Interroge les métriques| Prom
-    Grafana -->|Interroge les logs| Loki
-    Grafana -->|Interroge les traces| Tempo
-    Browser[Navigateur dans le portail Streamlit] -->|Iframe| Grafana
-    Browser -->|Iframe| Prefect
-```
-
-Prometheus collecte toutes les cinq secondes. Pushgateway conserve le dernier
-résultat publié après la disparition du flow : ces valeurs ne représentent pas
-un traitement en cours. Prefect reste la source pour le statut des exécutions.
-Les règles Prometheus signalent les alertes ; aucun Alertmanager ni envoi de
-notification externe n'est configuré. La collecte des traces est actuellement
-instrumentée dans la Prediction API.
-
-## Configuration et accès
-
-Les variables `*_UI_URL` sont des adresses accessibles depuis le navigateur.
-Pour une présentation depuis un autre ordinateur, remplacer `localhost` par le
-nom de l'hôte dans ces variables et dans `PREFECT_BROWSER_API_URL`. Conserver le
-même nom d'hôte pour Streamlit et les interfaces embarquées.
-
-L'authentification Streamlit protège le portail uniquement, pas les ports directs.
-Grafana autorise les iframes et l'accès anonyme Viewer pour cette démonstration.
-MinIO utilise `minioadmin` / `minioadmin` et Grafana `admin` / `admin`. Cette
-configuration est destinée à une démo locale et ne constitue pas un SSO.
-
-## Développement et validation avec uv
-
-Les dépendances sont déclarées par groupe dans `pyproject.toml` et figées dans
-`uv.lock`. Toutes les images Python utilisent `uv sync --frozen`.
+## Tests
 
 ```bash
 uv sync --frozen --group pipeline --group frontend --group api --group dev
-uv run --no-sync pytest -q
-PORTAL_PASSWORD=validation-only docker compose config --quiet
-# Après le démarrage, vérification réelle MLflow / MinIO / prédiction :
-uv run --no-sync python scripts/verify_demo.py
-# Vérifier accès anonyme, requêtes des dashboards, logs et traces :
-uv run --no-sync python scripts/verify_monitoring.py
+uv run --no-sync pytest -q              # unit + portal + promtool rule tests (+ integration if the stack is up)
+RUN_SCENARIOS=1 uv run --no-sync pytest tests/test_integration.py   # + end-to-end alert scenarios
 ```
 
-Le script de vérification attend le premier modèle, contrôle sa présence dans
-MinIO, demande une prédiction, puis lance un deuxième flow pour vérifier le
-rapport Evidently. Il nécessite la démo en cours sur les ports par défaut.
+Unit tests cover validation, drift (no drift / injected drift / thresholds read from config), the API contract,
+alert-rule structure and the portal pages. Integration tests send traffic to the running stack and check Prometheus.
+
+## Fault-injection endpoints (demo only)
+
+`PUT /admin/chaos` on the API adds artificial latency and is **disabled unless `CHAOS_ENABLED=true`**.
+The `controller` service can only stop/start `prediction_api` (allow-list) through the Docker socket, and publishes no port.
+Do not ship either to a real environment.
+
+## Notes and limits
+
+- Pushgateway keeps the last pipeline result, so drift/RMSE gauges describe the **last run**, not "now". The drift alert clears after a run without drift.
+- Delayed labels in the demo are **synthetic** (prediction + noise, plus bias when triggered).
+- Random 80/20 validation is fine for a demo; a real project should use a temporal split.
+- Dashboard viewers are anonymous and Streamlit login protects the portal only, not the direct ports.
+- Variables ending in `_UI_URL` are browser-facing: replace `localhost` by the host name when presenting from another computer.
