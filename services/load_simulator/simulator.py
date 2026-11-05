@@ -103,10 +103,38 @@ def send_request(payload):
             json=payload,
             timeout=10
         )
+        if response.status_code == 200:
+            schedule_feedback(response.headers.get('x-request-id'), response.json()['predicted_fare'])
         return response.status_code, response.elapsed.total_seconds()
     except requests.exceptions.RequestException as e:
         logger.error(f"Request failed: {e}")
         return None, 0
+
+
+# Delayed ground truth. The "real" fare is SYNTHETIC here: prediction x noise (x bias when the
+# presenter simulates a changing world). In production it would come from the billing system.
+FEEDBACK_DELAY_S = float(os.getenv("FEEDBACK_DELAY_S", "15"))
+pending_feedback = []
+
+
+def schedule_feedback(request_id, predicted):
+    if not request_id:
+        return
+    with lock:
+        bias = state['label_bias']
+    actual = max(0.5, predicted * (1 + bias) * random.lognormvariate(0, 0.08))
+    pending_feedback.append((time.time() + FEEDBACK_DELAY_S, request_id, actual))
+
+
+def feedback_loop():
+    while not stop.is_set():
+        while pending_feedback and pending_feedback[0][0] <= time.time():
+            _, request_id, actual = pending_feedback.pop(0)
+            try:
+                requests.post(f"{PREDICTION_API_URL}/feedback", json={"request_id": request_id, "actual_fare": actual}, timeout=5)
+            except requests.exceptions.RequestException as exc:
+                logger.error(f"Feedback failed: {type(exc).__name__}")
+        stop.wait(1)
 
 
 # Control plane used by the authenticated Streamlit portal (internal Docker network).
@@ -118,13 +146,14 @@ from pydantic import BaseModel, Field
 lock = threading.Lock()
 stop = threading.Event()
 state = dict(running=True, requests_per_second=REQUESTS_PER_SECOND, error_rate=ERROR_RATE,
-             sent=0, succeeded=0, rejected=0, failed=0, last_status=None)
+             sent=0, succeeded=0, rejected=0, failed=0, last_status=None, label_bias=0.0)
 
 
 class Settings(BaseModel):
     running: bool
     requests_per_second: float = Field(ge=0.2, le=20)
     error_rate: float = Field(ge=0, le=1)
+    label_bias: float | None = Field(default=None, ge=-0.9, le=3)
 
 
 def traffic_loop():
@@ -149,6 +178,7 @@ async def lifespan(app):
     stop.clear()
     thread = threading.Thread(target=traffic_loop, daemon=True)
     thread.start()
+    threading.Thread(target=feedback_loop, daemon=True).start()
     yield
     stop.set()
     thread.join(timeout=12)
@@ -166,5 +196,5 @@ def status():
 @app.put('/settings')
 def settings(value: Settings):
     with lock:
-        state.update(value.model_dump())
+        state.update(value.model_dump(exclude_none=True))
         return state.copy()

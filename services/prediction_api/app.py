@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import time
 import asyncio
+from collections import OrderedDict
 import logging
 import json
 import uuid
@@ -71,6 +72,15 @@ chaos_latency_seconds = Gauge(
     "chaos_latency_seconds",
     "Artificial latency injected for demo scenarios (0 = none)",
 )
+
+# Model quality once ground truth arrives (delayed labels): see POST /feedback
+labeled_predictions_total = Counter(
+    "labeled_predictions_total", "Predictions for which the real fare is now known")
+prediction_squared_error_total = Counter(
+    "prediction_squared_error_dollars2_total",
+    "Sum of squared errors (predicted - actual)^2 on labeled predictions; RMSE = sqrt(rate(sum)/rate(count))")
+feedback_unmatched_total = Counter(
+    "feedback_unmatched_total", "Feedback received for an unknown or expired request id")
 
 # ML Model Metrics (Layer 4: Model)
 prediction_requests_total = Counter(
@@ -198,6 +208,15 @@ class RequestData(BaseModel):
     pickup_weekday: int = Field(1, ge=0, le=1)
 
 
+class Feedback(BaseModel):
+    request_id: str = Field(min_length=1, max_length=64)
+    actual_fare: float = Field(gt=0, lt=5000)
+
+
+recent_predictions: "OrderedDict[str, float]" = OrderedDict()  # bounded memory: last 10k predictions
+MAX_PENDING = 10000
+
+
 class ChaosSettings(BaseModel):
     latency_ms: int = Field(0, ge=0, le=10000)
 
@@ -300,6 +319,9 @@ async def predict(data: RequestData):
             prediction_value.observe(fare)
             prediction_latency_seconds.observe(inference_duration)
             total_predicted_revenue.inc(fare)
+            recent_predictions[request_id_var.get()] = fare
+            while len(recent_predictions) > MAX_PENDING:
+                recent_predictions.popitem(last=False)
 
             span.set_attribute("prediction.fare", fare)
             span.set_attribute("prediction.inference_ms", inference_duration * 1000)
@@ -328,6 +350,18 @@ def health():
         return JSONResponse(status_code=503, content={"status": "unavailable", "model_loaded": True,
                                                        "reason": "model cannot predict"})
     return {"status": "ok", "model_loaded": True, "model_version": state["model_version"], "smoke_fare": round(fare, 2)}
+
+
+@app.post("/feedback")
+def feedback(item: Feedback):
+    """Delayed ground truth: the real fare of an earlier prediction (matched by X-Request-ID)."""
+    predicted = recent_predictions.pop(item.request_id, None)
+    if predicted is None:
+        feedback_unmatched_total.inc()
+        raise HTTPException(status_code=404, detail="Unknown or expired request id")
+    labeled_predictions_total.inc()
+    prediction_squared_error_total.inc((predicted - item.actual_fare) ** 2)
+    return {"error": round(predicted - item.actual_fare, 2)}
 
 
 # ── Demo fault injection (disabled unless CHAOS_ENABLED=true) ──

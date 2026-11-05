@@ -83,3 +83,13 @@ def test_chaos_is_forbidden_unless_enabled(client, monkeypatch):
     assert client.put("/admin/chaos", json={"latency_ms": 500}).status_code == 403
     monkeypatch.setattr(api, "CHAOS_ENABLED", True)
     assert client.put("/admin/chaos", json={"latency_ms": 0}).status_code == 200
+
+
+def test_feedback_updates_online_rmse_counters(client):
+    r = client.post("/fare_predict", json=VALID, headers={"X-Request-ID": "fb-1"})
+    assert r.status_code == 200
+    before = api.prediction_squared_error_total._value.get()
+    assert client.post("/feedback", json={"request_id": "fb-1", "actual_fare": 14.5}).json() == {"error": -2.0}
+    assert api.prediction_squared_error_total._value.get() - before == 4.0
+    assert client.post("/feedback", json={"request_id": "fb-1", "actual_fare": 14.5}).status_code == 404
+    assert client.post("/feedback", json={"request_id": "x", "actual_fare": -3}).status_code == 422
