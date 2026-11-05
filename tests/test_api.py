@@ -112,3 +112,17 @@ def test_request_without_model_returns_503_without_loading_in_the_request_path(m
     monkeypatch.setattr(api, "load_champion_model", lambda: called.append(1) or True)
     response = TestClient(api.app).post("/fare_predict", json=VALID)
     assert response.status_code == 503 and not called
+
+
+def test_injected_latency_is_visible_in_its_own_span(client, monkeypatch):
+    """Regression: the delay used to sit outside the spans, so traces hid the very latency they must explain."""
+    names = []
+    real = api.tracer.start_as_current_span
+
+    def spy(name, *args, **kwargs):
+        names.append(name)
+        return real(name, *args, **kwargs)
+    monkeypatch.setattr(api.tracer, "start_as_current_span", spy)
+    monkeypatch.setitem(api.chaos, "latency_ms", 1)
+    assert client.post("/fare_predict", json=VALID).status_code == 200
+    assert names == ["fare_prediction", "downstream_dependency"]

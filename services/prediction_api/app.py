@@ -281,9 +281,10 @@ async def startup_event():
 async def predict(data: RequestData):
     global model
 
-    if chaos["latency_ms"]:
-        await asyncio.sleep(chaos["latency_ms"] / 1000)  # demo scenario: degraded dependency
     with tracer.start_as_current_span("fare_prediction") as span:
+        if chaos["latency_ms"]:  # demo scenario: its own span, so the trace shows where the time went
+            with tracer.start_as_current_span("downstream_dependency"):
+                await asyncio.sleep(chaos["latency_ms"] / 1000)
         if model is None:
             # Never load a model inside a request: it blocks the event loop for seconds and shows up as a
             # fake latency incident. The polling thread retries every 5 s until a champion exists.
