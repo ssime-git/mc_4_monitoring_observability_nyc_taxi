@@ -112,7 +112,7 @@
       "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         { "expr": "up{job=\"prediction_api\"}", "legendFormat": "Prediction API", "refId": "A" },
-        { "expr": "up{job=\"data_api\"}", "legendFormat": "Data API", "refId": "B" }
+        { "expr": "up{job=\"pipeline\"}", "legendFormat": "Pipeline metrics", "refId": "B" }
       ]
     },
     {
@@ -296,7 +296,7 @@
       },
       "targets": [
         {
-          "expr": "{service=~\"prediction_api|data_api\"}",
+          "expr": "{service=~\"prediction_api|pipeline\"}",
           "refId": "A"
         }
       ]

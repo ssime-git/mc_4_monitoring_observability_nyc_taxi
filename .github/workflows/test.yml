@@ -1,0 +1,13 @@
+name: Demo tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.5"
+      - run: uv sync --frozen --group pipeline --group frontend --group dev
+      - run: uv run --no-sync pytest -q
+      - run: PORTAL_PASSWORD=ci-only docker compose config --quiet

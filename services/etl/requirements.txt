@@ -1,5 +1,0 @@
-pandas
-pyarrow
-fastparquet
-requests
-numpy

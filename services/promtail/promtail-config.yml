@@ -15,6 +15,12 @@ scrape_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
     relabel_configs:
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        regex: ".+"
+        action: keep
+      - source_labels: ["__meta_docker_network_name"]
+        regex: "nyc-taxi-ml"
+        action: keep
       # Use container name as the label
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"

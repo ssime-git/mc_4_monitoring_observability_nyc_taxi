@@ -1,0 +1,21 @@
+[project]
+name = "nyc-taxi-monitoring"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+ml = ["mlflow==2.22.2", "scikit-learn==1.6.1", "pandas>=2.2,<3", "pyarrow>=19,<20", "psycopg2-binary>=2.9,<3", "sqlalchemy>=2,<3", "requests>=2.32,<3"]
+telemetry = ["prometheus-client>=0.21,<1", "opentelemetry-api", "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-grpc", "opentelemetry-instrumentation-fastapi"]
+api = [{include-group = "ml"}, {include-group = "telemetry"}, "fastapi", "uvicorn[standard]", "pydantic-settings"]
+frontend = ["streamlit>=1.45,<2", "requests", "mlflow-skinny==2.22.2"]
+pipeline = [{include-group = "ml"}, {include-group = "telemetry"}, "prefect==3.4.25", "prefect-docker==0.6.6", "evidently==0.6.7", "boto3"]
+mlflow = ["mlflow==2.22.2", "boto3", "psycopg2-binary"]
+simulator = ["requests"]
+dev = ["pytest", "httpx"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.uv]
+constraint-dependencies = ["fastapi==0.115.12", "pydantic>=2.10,<2.12", "sqlalchemy>=2.0,<2.1", "scipy>=1.13,<1.16"]

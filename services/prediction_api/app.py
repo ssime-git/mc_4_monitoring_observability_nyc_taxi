@@ -203,18 +203,7 @@ def load_champion_model():
             logger.info(f"Champion model version {new_version} loaded successfully in {load_duration:.2f}s")
         return True
     except Exception as e:
-        logger.warning(f"Could not load champion model ({e}). Checking for latest version fallback...")
-        # Fall back to loading 'latest' if no champion exists yet
-        if model is None:
-            try:
-                logger.info("Attempting to load 'latest' model as fallback...")
-                loaded_model = mlflow.sklearn.load_model(f"models:/{model_name}/latest")
-                model = loaded_model
-                model_loaded.set(1)
-                logger.info("Latest model loaded successfully as fallback")
-                return True
-            except Exception as ex:
-                logger.warning(f"Could not load fallback latest model: {ex}")
+        logger.warning(f"Champion not available yet: {e}")
         return False
 
 def model_polling_loop():

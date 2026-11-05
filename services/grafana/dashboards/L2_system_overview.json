@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "expr": "{service=~\"prediction_api|data_api|training_pipeline|etl_pipeline\"}",
+          "expr": "{service=~\"prediction_api|prefect_worker|pipeline\"}",
           "refId": "A"
         }
       ]
@@ -189,7 +189,7 @@
       },
       "targets": [
         {
-          "expr": "{service=~\"prediction_api|data_api|training_pipeline|etl_pipeline\"} | json | level = \"ERROR\"",
+          "expr": "{service=~\"prediction_api|prefect_worker|pipeline\"} | json | level = \"ERROR\"",
           "refId": "A"
         }
       ]

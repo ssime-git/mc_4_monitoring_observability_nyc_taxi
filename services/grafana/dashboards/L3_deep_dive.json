@@ -67,13 +67,13 @@
       ]
     },
     {
-      "title": "💾 Data Pipeline & Database Deep Dive (Layer 2 - Data API)",
+      "title": "💾 Pipeline Prefect",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
       "collapsed": false
     },
     {
-      "title": "Batch Ingestion Size Distribution",
+      "title": "Training dataset rows",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
@@ -87,19 +87,19 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.90, sum(rate(trips_batch_size_bucket[5m])) by (le))",
-          "legendFormat": "p90 Batch Size",
+          "expr": "pipeline_training_rows",
+          "legendFormat": "Training rows",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.50, sum(rate(trips_batch_size_bucket[5m])) by (le))",
-          "legendFormat": "p50 Batch Size",
+          "expr": "pipeline_training_rows",
+          "legendFormat": "Training rows",
           "refId": "B"
         }
       ]
     },
     {
-      "title": "Data Quality - Null Rates",
+      "title": "Data drift share",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
@@ -113,14 +113,14 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "data_null_rate",
-          "legendFormat": "Null Rate: {{field}}",
+          "expr": "data_drift_share",
+          "legendFormat": "Drift share",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Active Database Connections",
+      "title": "Candidate RMSE",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "" },
       "gridPos": { "h": 4, "w": 12, "x": 0, "y": 18 },
@@ -139,11 +139,11 @@
       },
       "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
-        { "expr": "db_connections_active", "legendFormat": "Active Connections", "refId": "A" }
+        { "expr": "model_drift_rmse_current", "legendFormat": "RMSE", "refId": "A" }
       ]
     },
     {
-      "title": "Data Ingestion Errors Total",
+      "title": "Data drift detected",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "" },
       "gridPos": { "h": 4, "w": 12, "x": 12, "y": 18 },
@@ -161,7 +161,7 @@
       },
       "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
-        { "expr": "data_ingestion_errors_total", "legendFormat": "Ingestion Errors", "refId": "A" }
+        { "expr": "data_drift_detected", "legendFormat": "Drift detected", "refId": "A" }
       ]
     },
     {
@@ -200,7 +200,7 @@
       },
       "targets": [
         {
-          "expr": "{service=~\"etl_pipeline|data_api\"}",
+          "expr": "{service=~\"prefect_worker|pipeline\"}",
           "refId": "A"
         }
       ]

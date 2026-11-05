@@ -1,214 +1,266 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
-    container_name: nyc_taxi_db
     environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin
-      - POSTGRES_DB=nyc_taxi
+    - POSTGRES_USER=admin
+    - POSTGRES_PASSWORD=admin
+    - POSTGRES_DB=nyc_taxi
     ports:
-      - "5432:5432"
+    - 5432:5432
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+    - postgres_data:/var/lib/postgresql/data
     networks:
-      - ml-network
-
+    - ml-network
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U admin -d nyc_taxi
+      interval: 5s
+      timeout: 5s
+      retries: 30
   mlflow_server:
     build:
-      context: ./services/mlflow
-    container_name: mlflow_server
+      context: .
+      dockerfile: services/mlflow/Dockerfile
     ports:
-      - "5000:5000"
+    - 5000:5000
     volumes:
-      - mlflow_data:/app/mlruns
+    - mlflow_metadata:/mlflow-data
     networks:
-      - ml-network
-
-  data_api:
-    build:
-      context: ./services/data_api
-    container_name: data_api
+    - ml-network
+    environment: &id001
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
     depends_on:
-      - db
-    environment:
-      - DATABASE_URL=postgresql://admin:admin@db:5432/nyc_taxi
-    ports:
-      - "8001:8001"
-    networks:
-      - ml-network
-
-  etl_pipeline:
-    build:
-      context: ./services/etl
-    container_name: etl_pipeline
-    restart: unless-stopped
-    depends_on:
-      - data_api
-    environment:
-      - YEAR=2024
-      - MONTH=1
-      - DATA_API_URL=http://data_api:8001
-      - INGESTION_INTERVAL_SECONDS=600
-    networks:
-      - ml-network
-
-  training_pipeline:
-    build:
-      context: ./services/training
-    container_name: training_pipeline
-    restart: unless-stopped
-    depends_on:
-      - data_api
-      - mlflow_server
-    environment:
-      - DATA_API_URL=http://data_api:8001
-      - MLFLOW_TRACKING_URI=http://mlflow_server:5000
-      - EVIDENTLY_URL=http://evidently_service:8002
-      - REFERENCE_DATA_PATH=/app/reference_data/reference.parquet
-      - N_ESTIMATORS=100
-      - MAX_DEPTH=5
-      - RETRAIN_INTERVAL_SECONDS=86400
-    ports:
-      - "8003:8003"
-    volumes:
-      - mlflow_data:/app/mlruns
-      - reference_data:/app/reference_data
-    networks:
-      - ml-network
-
-  evidently_service:
-    build:
-      context: ./services/evidently
-    container_name: evidently_service
-    restart: unless-stopped
-    ports:
-      - "8002:8002"
-    volumes:
-      - reference_data:/app/reference_data
-      - evidently_reports:/app/reports
-    networks:
-      - ml-network
-
+      minio_init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://localhost:5000/health')
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    image: taxi-mlflow:demo
   prediction_api:
     build:
-      context: ./services/prediction_api
-    container_name: prediction_api
+      context: .
+      dockerfile: services/prediction_api/Dockerfile
     depends_on:
-      - mlflow_server
+      mlflow_server:
+        condition: service_healthy
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow_server:5000
-    volumes:
-      - mlflow_data:/app/mlruns
+    - MLFLOW_TRACKING_URI=http://mlflow_server:5000
     ports:
-      - "8000:8000"
+    - 8000:8000
     networks:
-      - ml-network
-
+    - ml-network
   frontend:
     build:
-      context: ./services/frontend
-    container_name: streamlit_app
+      context: .
+      dockerfile: services/frontend/Dockerfile
     depends_on:
-      - prediction_api
+    - prediction_api
     environment:
-      - PREDICTION_API_URL=http://prediction_api:8000
+    - PREDICTION_API_URL=http://prediction_api:8000
+    - PORTAL_USERNAME=${PORTAL_USERNAME:-demo}
+    - PORTAL_PASSWORD=${PORTAL_PASSWORD:?Set PORTAL_PASSWORD in .env}
+    - PREFECT_UI_URL=${PREFECT_UI_URL:-http://localhost:4200}
+    - GRAFANA_UI_URL=${GRAFANA_UI_URL:-http://localhost:3000}
+    - PROMETHEUS_UI_URL=${PROMETHEUS_UI_URL:-http://localhost:9090}
+    - MLFLOW_UI_URL=${MLFLOW_UI_URL:-http://localhost:5000}
+    - MLFLOW_TRACKING_URI=http://mlflow_server:5000
     ports:
-      - "8501:8501"
+    - 8501:8501
     networks:
-      - ml-network
-
+    - ml-network
   prometheus:
     image: prom/prometheus:v2.47.0
-    container_name: prometheus
     volumes:
-      - ./services/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./services/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
-      - prometheus_data:/prometheus
+    - ./services/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    - ./services/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
+    - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
     ports:
-      - "9090:9090"
+    - 9090:9090
     networks:
-      - ml-network
-
+    - ml-network
   grafana:
     image: grafana/grafana:10.2.0
-    container_name: grafana
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_DATABASE_WAL=true
+    - GF_SECURITY_ADMIN_PASSWORD=admin
+    - GF_USERS_ALLOW_SIGN_UP=false
+    - GF_DATABASE_WAL=true
+    - GF_SECURITY_ALLOW_EMBEDDING=true
+    - GF_AUTH_ANONYMOUS_ENABLED=true
+    - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
-      - ./services/grafana/provisioning:/etc/grafana/provisioning
-      - ./services/grafana/dashboards:/var/lib/grafana/dashboards
-      - grafana_data:/var/lib/grafana
+    - ./services/grafana/provisioning:/etc/grafana/provisioning
+    - ./services/grafana/dashboards:/var/lib/grafana/dashboards
+    - grafana_data:/var/lib/grafana
     ports:
-      - "3000:3000"
+    - 3000:3000
     depends_on:
-      - prometheus
+    - prometheus
     networks:
-      - ml-network
-
+    - ml-network
   loki:
     image: grafana/loki:2.9.2
-    container_name: loki
     volumes:
-      - ./services/loki/loki-config.yml:/etc/loki/local-config.yaml
+    - ./services/loki/loki-config.yml:/etc/loki/local-config.yaml
     command: -config.file=/etc/loki/local-config.yaml
     ports:
-      - "3100:3100"
+    - ${LOKI_PORT:-3101}:3100
     networks:
-      - ml-network
-
+    - ml-network
   promtail:
     image: grafana/promtail:2.9.2
-    container_name: promtail
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./services/promtail/promtail-config.yml:/etc/promtail/config.yml
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ./services/promtail/promtail-config.yml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     depends_on:
-      - loki
+    - loki
     networks:
-      - ml-network
-
+    - ml-network
   tempo:
     image: grafana/tempo:2.3.0
-    container_name: tempo
     volumes:
-      - ./services/tempo/tempo-config.yml:/etc/tempo/tempo-config.yaml
+    - ./services/tempo/tempo-config.yml:/etc/tempo/tempo-config.yaml
     command: -config.file=/etc/tempo/tempo-config.yaml
     ports:
-      - "3200:3200"
-      - "4317:4317"
-      - "4318:4318"
+    - 3200:3200
+    - 4317:4317
+    - 4318:4318
     networks:
-      - ml-network
-
-
+    - ml-network
   load_simulator:
     build:
-      context: ./services/load_simulator
-    container_name: load_simulator
+      context: .
+      dockerfile: services/load_simulator/Dockerfile
     environment:
-      - PREDICTION_API_URL=http://prediction_api:8000
-      - REQUESTS_PER_SECOND=2
+    - PREDICTION_API_URL=http://prediction_api:8000
+    - REQUESTS_PER_SECOND=2
     depends_on:
-      - prediction_api
+    - prediction_api
     networks:
-      - ml-network
-
+    - ml-network
+  minio:
+    command:
+    - server
+    - /data
+    - --console-address
+    - :9001
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+    - 9000:9000
+    - 9001:9001
+    volumes:
+    - minio_data:/data
+    networks:
+    - ml-network
+    build:
+      context: .
+      dockerfile: services/minio/Dockerfile
+  minio_init:
+    image: taxi-mlflow:demo
+    entrypoint:
+    - python
+    - services/mlflow/init_bucket.py
+    environment: *id001
+    depends_on:
+    - minio
+    networks:
+    - ml-network
+  prefect_server:
+    image: nyc-taxi-pipeline:demo
+    build:
+      context: .
+      dockerfile: services/pipeline/Dockerfile
+    command:
+    - prefect
+    - server
+    - start
+    - --host
+    - 0.0.0.0
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: sqlite+aiosqlite:////prefect-data/prefect.db
+      PREFECT_UI_API_URL: ${PREFECT_BROWSER_API_URL:-http://localhost:4200/api}
+    ports:
+    - 4200:4200
+    volumes:
+    - prefect_data:/prefect-data
+    networks:
+    - ml-network
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')
+      interval: 5s
+      timeout: 5s
+      retries: 90
+  prefect_bootstrap:
+    image: nyc-taxi-pipeline:demo
+    command:
+    - python
+    - services/pipeline/bootstrap.py
+    environment:
+      PREFECT_API_URL: http://prefect_server:4200/api
+      DATABASE_URL: postgresql://admin:admin@db:5432/nyc_taxi
+      MLFLOW_TRACKING_URI: http://mlflow_server:5000
+      PUSHGATEWAY_URL: http://pushgateway:9091
+      DEMO_ROWS: ${DEMO_ROWS:-5000}
+    depends_on:
+      prefect_server:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      mlflow_server:
+        condition: service_healthy
+    networks:
+    - ml-network
+  prefect_worker:
+    image: nyc-taxi-pipeline:demo
+    command:
+    - prefect
+    - worker
+    - start
+    - --pool
+    - taxi-docker
+    - --type
+    - docker
+    environment:
+      PREFECT_API_URL: http://prefect_server:4200/api
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect_bootstrap:
+        condition: service_completed_successfully
+    networks:
+    - ml-network
+    restart: unless-stopped
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    networks:
+    - ml-network
 volumes:
-  postgres_data:
-  mlflow_data:
-  prometheus_data:
-  grafana_data:
-  reference_data:
-  evidently_reports:
-
+  postgres_data: null
+  prometheus_data: null
+  grafana_data: null
+  mlflow_metadata: null
+  minio_data: null
+  prefect_data: null
 networks:
   ml-network:
     driver: bridge
+    name: nyc-taxi-ml
