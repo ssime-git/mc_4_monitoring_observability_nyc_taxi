@@ -93,3 +93,14 @@ def test_feedback_updates_online_rmse_counters(client):
     assert api.prediction_squared_error_total._value.get() - before == 4.0
     assert client.post("/feedback", json={"request_id": "fb-1", "actual_fare": 14.5}).status_code == 404
     assert client.post("/feedback", json={"request_id": "x", "actual_fare": -3}).status_code == 422
+
+
+def test_api_bounds_match_the_pipeline_schema():
+    """One data contract: what training accepts, serving accepts (vendor 1-7, rate code 1-99, zones 1-265)."""
+    from services.pipeline import taxi_validation
+    for column, field in [('vendor_id', 'vendor_id'), ('rate_code_id', 'rate_code_id'),
+                          ('pu_location_id', 'pu_location_id'), ('passenger_count', 'passenger_count')]:
+        check = taxi_validation.SCHEMA.columns[column].checks[0].statistics
+        model_field = api.RequestData.model_fields[field]
+        bounds = {type(m).__name__: m for m in model_field.metadata}
+        assert bounds['Ge'].ge == check['min_value'] and bounds['Le'].le == check['max_value'], column
