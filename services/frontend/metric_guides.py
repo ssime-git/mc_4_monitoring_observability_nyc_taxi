@@ -7,13 +7,9 @@ GUIDED_PAGES = ('Grafana', 'Prometheus', 'MLflow', 'Evidently reports')
 
 
 def diagram(*steps):
-    boxes = '<span aria-hidden="true">→</span>'.join(
-        f'<div class="metric-step">{escape(step)}</div>' for step in steps)
-    st.html('''<style>
-    .metric-flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 20px}
-    .metric-step{flex:1;min-width:125px;padding:14px;border:1px solid #6483a5;
-    border-top:3px solid #f08c46;border-radius:8px;font-size:14px}
-    </style><div class="metric-flow" role="group" aria-label="How the measurement is obtained">'''+boxes+'</div>')
+    """Numbered flow. Styles live in theme.css."""
+    boxes = ''.join(f'<div><span>{index}</span>{escape(step)}</div>' for index, step in enumerate(steps, 1))
+    st.html(f'<div class="flow" role="group" aria-label="How the measurement is obtained">{boxes}</div>')
 
 
 BUSINESS = [
@@ -21,7 +17,7 @@ BUSINESS = [
      '120/min means about 2 successful quotes per second. Failures are not counted. Below 30/min the business alert fires.'),
     ('Predicted revenue', 'The sum of all predicted fares (`total_predicted_revenue_dollars_total`).',
      'A volume proxy, not money actually collected. It follows traffic and model behaviour.'),
-    ('Fare distribution', 'Each fare increments cumulative buckets: ≤5 $, ≤10 $, ≤15 $…',
+    ('Fare distribution', 'Each fare increments cumulative buckets: up to $5, up to $10, up to $15…',
      'Shows whether prices concentrate or move toward high values. A shift can come from different trips or a new model.'),
 ]
 SYSTEM = [
@@ -32,7 +28,7 @@ SYSTEM = [
     ('Error rate (5xx)', 'Responses 500–599 divided by all responses over the same window.',
      '5 errors out of 100 = 5 %. 422s are excluded. With no traffic, zero proves nothing.'),
     ('Latency p50 / p95 / p99', 'The API records each duration in a histogram; Prometheus estimates percentiles from the buckets.',
-     'p99 = 200 ms: about 99 % of requests are faster. It is neither the maximum nor an average — averages hide slow tails.'),
+     'p99 = 200 ms: about 99 % of requests are faster. It is neither the maximum nor an average Averages hide slow tails.'),
     ('Logs', 'Promtail ships container output to Loki. Every API line is JSON with `request_id`, `trace_id`, `model_version`.',
      'Read them for the *why* behind a metric. An empty ERROR panel can simply mean no error.'),
     ('Traces', 'OpenTelemetry records timed steps linked by a trace id, stored in Tempo.',

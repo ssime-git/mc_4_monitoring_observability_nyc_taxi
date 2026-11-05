@@ -52,6 +52,8 @@ Use *Start here → Reset to a healthy baseline* between stories.
 | 6 · Model quality | real fares jump +100% | online RMSE vs validation RMSE | `OnlineModelErrorHigh` |
 | 7 · Business impact | traffic collapses | quotes/min and revenue/min | `BusinessThroughputLow` |
 
+The portal has a light and a dark theme: it follows the system setting, and the switch at the bottom of the sidebar overrides it (embedded Grafana panels follow). Fonts are self-hosted, so the interface needs no internet access.
+
 Other sections: **Observe** (alerts & notifications, logs & traces, Grafana dashboards) and **Deep dive**
 (Prefect, MLflow, Evidently, Prometheus, Alertmanager, manual prediction) keep the full tools one click away through iframes.
 
@@ -162,6 +164,7 @@ sequenceDiagram
 | Runbooks | `docs/RUNBOOKS.md` (each alert links to its section) |
 | Alert routing | `services/alertmanager/alertmanager.yml` → demo webhook |
 | Dashboards (provisioned from files) | `services/grafana/dashboards/` — **L0 “Is it OK?”** first, then L1/L2/L3 |
+| Portal design system | `services/frontend/theme.css` (tokens), `ui.py` (components), `.streamlit/config.toml` (Streamlit themes, chart palette) |
 | Scrape interval | 5 s (demo choice; rule windows are 1 m, ≥ 12× the interval) |
 
 There is no LLM/RAG component in this demo, so LLM-specific checks are not applicable (see `DEMO_CHECKLIST.md`).

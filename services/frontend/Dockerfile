@@ -5,4 +5,5 @@ ENV UV_HTTP_TIMEOUT=300 PYTHONUNBUFFERED=1 PATH="/app/.venv/bin:$PATH"
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --only-group frontend --no-install-project
 COPY services/frontend services/frontend
+COPY services/frontend/.streamlit .streamlit
 CMD ["streamlit", "run", "services/frontend/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

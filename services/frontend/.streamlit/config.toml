@@ -1,0 +1,62 @@
+# Light and dark themes share one layout; viewers can switch from the sidebar. No [theme] base: follows the OS by default.
+[server]
+enableStaticServing = true
+
+[client]
+toolbarMode = "viewer"     # keeps the theme menu, hides Streamlit's developer entries
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+font = "Geist, -apple-system, 'Segoe UI', sans-serif"
+headingFont = "Geist, -apple-system, 'Segoe UI', sans-serif"
+codeFont = "'Geist Mono', ui-monospace, Menlo, monospace"
+baseFontSize = 14
+baseRadius = "6px"
+buttonRadius = "6px"
+showWidgetBorder = true
+showSidebarBorder = true
+headingFontWeights = [600, 600, 600, 600, 600, 600]
+
+[[theme.fontFaces]]
+family = "Geist"
+url = "app/static/fonts/Geist-Variable.woff2"
+weight = "100 900"
+
+[[theme.fontFaces]]
+family = "Geist Mono"
+url = "app/static/fonts/GeistMono-Variable.woff2"
+weight = "100 900"
+
+[theme.light]
+primaryColor = "#171717"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#fafafa"
+textColor = "#171717"
+linkColor = "#0a66d8"
+borderColor = "#e5e5e5"
+codeBackgroundColor = "#f5f5f5"
+dataframeHeaderBackgroundColor = "#fafafa"
+chartCategoricalColors = ["#0a66d8", "#00a07a", "#c2188f", "#6e56cf"]
+
+[theme.light.sidebar]
+backgroundColor = "#fafafa"
+secondaryBackgroundColor = "#f2f2f2"
+borderColor = "#e5e5e5"
+
+[theme.dark]
+primaryColor = "#ededed"
+backgroundColor = "#0a0a0a"
+secondaryBackgroundColor = "#121212"
+textColor = "#ededed"
+linkColor = "#52a8ff"
+borderColor = "#262626"
+codeBackgroundColor = "#1a1a1a"
+dataframeHeaderBackgroundColor = "#121212"
+chartCategoricalColors = ["#2f86eb", "#14a886", "#bf3a8c", "#8d74e6"]
+
+[theme.dark.sidebar]
+backgroundColor = "#0a0a0a"
+secondaryBackgroundColor = "#1a1a1a"
+borderColor = "#262626"

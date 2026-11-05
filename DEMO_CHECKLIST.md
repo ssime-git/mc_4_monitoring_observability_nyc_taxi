@@ -80,7 +80,9 @@ Why these delays: Prometheus `for:` (15–30 s) + 1-minute rate windows; Alertma
 - ⚠️ **Alert receiver is a fake webhook.** A real Slack/PagerDuty receiver needs a secret that I did not invent; swap the receiver in `alertmanager.yml` and add the secret to `.env`.
 - ⚠️ **Fault injection and controller** (`CHAOS_ENABLED`, `controller` with the Docker socket) are demo-only and must not reach a real environment.
 - ⚠️ **Pushgateway gauges** describe the last pipeline run, so `DataDriftDetected` stays on until a clean run. Documented in the runbook and README.
-- ⚠️ Streamlit pages are tested for rendering (and smoke-run against the live stack), not by a browser end-to-end test.
+- ⚠️ Streamlit pages are tested for rendering (and checked by hand with Chromium screenshots in both themes), not by an automated browser end-to-end test.
+- ⚠️ The sidebar theme switch drives Streamlit's own menu because Streamlit has no Python API for it. If an upgrade breaks it, the top-right menu still switches theme.
+- ⚠️ The simulator sends requests one at a time, so injected latency also lowers throughput: at 1500 ms `BusinessThroughputLow` can fire after `HighLatencyP99`. It is a real knock-on effect, worth saying out loud.
 - ⚠️ Evidently `DataDriftPreset` still produces the HTML report; the *decision* now comes from our PSI/KS code, so the two can disagree on borderline features.
 
 ## 5 · Commands

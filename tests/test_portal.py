@@ -13,7 +13,7 @@ def test_login_then_story_home_then_logout(monkeypatch):
     monkeypatch.setenv('PORTAL_PASSWORD', 'test-password')
     app = AppTest.from_file(str(APP), default_timeout=30).run()
     assert not app.exception
-    assert app.title[0].value.startswith('NYC Taxi portal')
+    assert app.title[0].value == 'NYC Taxi portal'
     app.text_input[0].set_value('demo')
     app.text_input[1].set_value('wrong')
     app.button[0].click().run()
@@ -21,7 +21,7 @@ def test_login_then_story_home_then_logout(monkeypatch):
     app.text_input[1].set_value('test-password')
     app.button[0].click().run()
     assert not app.exception
-    assert 'ML monitoring' in app.title[0].value        # landing page of the story
+    assert app.title[0].value == 'NYC Taxi fare service'  # landing page of the story
     app.sidebar.button[0].click().run()                  # sign out
     assert len(app.text_input) == 2
 
@@ -52,3 +52,17 @@ def test_every_page_renders_without_backends(module, function, monkeypatch):
         default_timeout=30).run()
     assert not app.exception, app.exception
     assert app.title
+
+
+def test_copy_cannot_inject_html_into_the_page():
+    import sys
+    sys.path.insert(0, FRONTEND)
+    import ui
+    assert ui.inline('<img src=x> `code` **bold**') == '&lt;img src=x&gt; <code>code</code> <strong>bold</strong>'
+
+
+def test_no_emoji_left_in_the_interface():
+    import re
+    emoji = re.compile('[\U0001F300-\U0001FAFF\u2600-\u27BF]')
+    for name in ['app.py', 'story.py', 'tools.py', 'ui.py', 'metric_guides.py']:
+        assert not emoji.search((ROOT / 'services/frontend' / name).read_text()), name
