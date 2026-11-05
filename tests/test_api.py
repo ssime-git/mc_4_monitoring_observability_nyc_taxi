@@ -104,3 +104,11 @@ def test_api_bounds_match_the_pipeline_schema():
         model_field = api.RequestData.model_fields[field]
         bounds = {type(m).__name__: m for m in model_field.metadata}
         assert bounds['Ge'].ge == check['min_value'] and bounds['Le'].le == check['max_value'], column
+
+
+def test_request_without_model_returns_503_without_loading_in_the_request_path(monkeypatch):
+    monkeypatch.setattr(api, "model", None)
+    called = []
+    monkeypatch.setattr(api, "load_champion_model", lambda: called.append(1) or True)
+    response = TestClient(api.app).post("/fare_predict", json=VALID)
+    assert response.status_code == 503 and not called

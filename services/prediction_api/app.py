@@ -268,7 +268,7 @@ def model_polling_loop():
             load_champion_model()
         except Exception as e:
             logger.error(f"Error in model polling loop: {e}")
-        time.sleep(60)
+        time.sleep(5 if model is None else 60)
 
 @app.on_event("startup")
 async def startup_event():
@@ -283,9 +283,10 @@ async def predict(data: RequestData):
         await asyncio.sleep(chaos["latency_ms"] / 1000)  # demo scenario: degraded dependency
     with tracer.start_as_current_span("fare_prediction") as span:
         if model is None:
-            if not load_champion_model():
-                prediction_errors_total.labels(error_type="model_unavailable").inc()
-                raise HTTPException(status_code=503, detail="Model not yet available")
+            # Never load a model inside a request: it blocks the event loop for seconds and shows up as a
+            # fake latency incident. The polling thread retries every 5 s until a champion exists.
+            prediction_errors_total.labels(error_type="model_unavailable").inc()
+            raise HTTPException(status_code=503, detail="Model not yet available")
 
         # Create input DataFrame
         input_data = data.model_dump()

@@ -76,6 +76,8 @@ def settle():
     sim(NORMAL)
     chaos(0)
     wait(lambda: not firing(), 300, 'all alerts to clear before starting')
+    time.sleep(70)  # let the 1-minute rate windows forget the previous scenario
+    assert not firing(), f'alerts re-fired during settle: {firing()}'
     requests.delete(f'{HOOK}/alerts', timeout=5)
 
 
