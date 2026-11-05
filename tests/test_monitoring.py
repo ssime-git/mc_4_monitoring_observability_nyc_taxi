@@ -17,3 +17,13 @@ def test_dashboard_panels_have_unique_ids_and_explicit_datasources():
                     assert target['query']
             for target in panel.get('targets', []):
                 assert 'trips_ingested_total' not in target.get('expr', '')
+
+
+def test_every_data_panel_declares_a_unit_and_status_dashboard_has_thresholds():
+    for path in Path('services/grafana/dashboards').glob('*.json'):
+        for panel in json.loads(path.read_text())['panels']:
+            if panel['type'] in ('stat', 'timeseries', 'bargauge', 'gauge'):
+                assert panel['fieldConfig']['defaults'].get('unit'), f"{path.name}: '{panel['title']}' has no unit"
+    status = json.loads(Path('services/grafana/dashboards/L0_status.json').read_text())
+    stats = [p for p in status['panels'] if p['type'] == 'stat']
+    assert len(stats) >= 6 and all(p['fieldConfig']['defaults']['thresholds']['steps'] for p in stats)
