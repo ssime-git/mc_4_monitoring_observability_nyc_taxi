@@ -48,7 +48,7 @@ Use *Start here → Reset to a healthy baseline* between stories.
 | 2 · A slow service | inject 1.5 s latency | p50/p95/p99 vs the 1 s line, slowest traces, slow log lines | `HighLatencyP99` |
 | 3 · Data drift | run the pipeline on shifted data | PSI per feature vs threshold, dataset flag | `DataDriftDetected` |
 | 4 · Bad data | raise the share of invalid requests | 422s climb, 5xx stays 0; logs name the fields | none (on purpose) |
-| 5 · An outage | stop the API | `up`→0, `/health` unreachable, notification, recovery | `ServiceDown` |
+| 5 · An outage | stop the API | `up`→0, then the cascade: `ModelNotLoaded`, `BusinessThroughputLow` turn red; only `ServiceDown` notifies (inhibition) | `ServiceDown` (+ cascade) |
 | 6 · Model quality | real fares jump +100% | online RMSE vs validation RMSE | `OnlineModelErrorHigh` |
 | 7 · Business impact | traffic collapses | quotes/min and revenue/min | `BusinessThroughputLow` |
 

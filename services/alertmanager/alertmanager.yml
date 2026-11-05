@@ -6,6 +6,11 @@ route:
   group_wait: 5s        # short on purpose so the audience sees the notification quickly
   group_interval: 10s
   repeat_interval: 1h
+# Cascade control: during an outage ServiceDown is the root cause. Its consequences still fire in
+# Prometheus (visible in Streamlit/Grafana) but are not notified separately.
+inhibit_rules:
+  - source_matchers: [alertname="ServiceDown", job="prediction_api"]
+    target_matchers: ['alertname=~"ModelNotLoaded|BusinessThroughputLow"']
 receivers:
   - name: demo-webhook
     webhook_configs:

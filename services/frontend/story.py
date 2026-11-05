@@ -322,7 +322,7 @@ def live_outage():
 def outage():
     c.scenario_header(5, '💥', 'An outage',
                       'The prediction service crashes. Customers get no quote at all.',
-                      '`up` drops to 0 → `ServiceDown` fires in ~15 s → notification → restart → resolved. '
+                      '`up` drops to 0 → `ServiceDown` fires in ~15 s, then the cascade: `ModelNotLoaded` (~1 min) and `BusinessThroughputLow` turn red, but Alertmanager only notifies the root cause. '
                       'Observability note: with the process gone, **only metrics from outside** (Prometheus) can notice.')
     left, right = st.columns([1, 3])
     with left:

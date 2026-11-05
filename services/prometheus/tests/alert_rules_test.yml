@@ -101,3 +101,31 @@ tests:
               description: "5xx ratio is 50% (threshold 5%: above it, 1 customer in 20 sees a failure)."
               action: "Check the API logs in Grafana (level=ERROR, then filter by request_id) and /health; roll back the model if the errors started with a new champion."
               runbook_url: "docs/RUNBOOKS.md#higherrorrate"
+  - interval: 5s
+    name: an outage cascades to ModelNotLoaded and BusinessThroughputLow
+    input_series:
+      - series: 'up{job="prediction_api",instance="prediction_api:8000"}'
+        values: '1 1 1 0x60'
+      - series: 'model_loaded{job="prediction_api"}'
+        values: '1 1 1 stale'
+      - series: 'prediction_requests_total{job="prediction_api"}'
+        values: '0+10x3 stale'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ModelNotLoaded
+        exp_alerts:
+          - exp_labels: {severity: page, layer: model, job: prediction_api}
+            exp_annotations:
+              summary: "No champion model is loaded"
+              description: "The API cannot serve predictions (503) because no champion model is in memory."
+              action: "Check the MLflow registry for the `champion` alias and the API logs; re-run the Prefect flow if no model was ever promoted."
+              runbook_url: "docs/RUNBOOKS.md#modelnotloaded"
+      - eval_time: 3m
+        alertname: BusinessThroughputLow
+        exp_alerts:
+          - exp_labels: {severity: ticket, layer: business}
+            exp_annotations:
+              summary: "Fewer than 30 fares quoted per minute"
+              description: "Only 0 successful quotes/min; the usual level is ~120."
+              action: "Check upstream traffic (is the app sending requests?), the 422 rate (bad clients) and the 5xx rate; see the Business dashboard."
+              runbook_url: "docs/RUNBOOKS.md#businessthroughputlow"

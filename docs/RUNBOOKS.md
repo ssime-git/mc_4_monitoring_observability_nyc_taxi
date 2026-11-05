@@ -14,6 +14,7 @@ Alert rules live in `services/prometheus/alert_rules.yml` and point here through
 - **Act:** find the slow span; restart or scale the API; remove any injected latency (`PUT /admin/chaos {"latency_ms": 0}`).
 
 ## ServiceDown
+- **Cascade:** while the API is down, `ModelNotLoaded` (~1 min) and `BusinessThroughputLow` also fire in Prometheus. Alertmanager *inhibits* their notifications so only this root cause pages.
 - **Meaning:** Prometheus cannot scrape a target for 15 s.
 - **Act:** `docker compose ps`, `docker compose logs <service>`, `docker compose up -d <service>`.
 

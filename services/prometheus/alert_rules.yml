@@ -47,7 +47,8 @@ groups:
   - name: model_alerts
     rules:
       - alert: ModelNotLoaded
-        expr: model_loaded == 0
+        # Also true when the gauge disappears (API down): no metric means no model serving.
+        expr: model_loaded == 0 or absent(model_loaded{job="prediction_api"})
         for: 1m
         labels: {severity: page, layer: model}
         annotations:
@@ -96,10 +97,10 @@ groups:
     rules:
       - alert: BusinessThroughputLow
         # Business indicator: priced trips per minute (revenue proxy). Normal demo traffic is ~120/min;
-        # below 30/min the business is losing most of its quotes. Not raised when the API is down (ServiceDown covers it).
+        # below 30/min the business is losing most of its quotes. Fires during an outage too (`or vector(0)`:
+        # a vanished series means zero quotes); Alertmanager inhibits the notification so only the root cause pages.
         expr: |
-          sum(rate(prediction_requests_total[1m])) * 60 < 30
-          and on() (up{job="prediction_api"} == 1)
+          (sum(rate(prediction_requests_total[1m])) * 60 or vector(0)) < 30
         for: 30s
         labels: {severity: ticket, layer: business}
         annotations:
