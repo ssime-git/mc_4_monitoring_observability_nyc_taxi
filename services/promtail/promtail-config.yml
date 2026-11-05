@@ -45,10 +45,9 @@ scrape_configs:
             trace_id: trace_id
             span_id: span_id
             service_name: service
+      # Only low-cardinality labels. trace_id / request_id stay INSIDE the JSON line:
+      # as labels they create one stream per request and Loki answers 429 (logs silently lost).
       - labels:
           level:
-          trace_id:
           service_name:
-      # Fall back: keep raw log line if not JSON
-      - output:
-          source: message
+      # No `output` stage: the full JSON line (request_id, trace_id, model_version...) must reach Loki.

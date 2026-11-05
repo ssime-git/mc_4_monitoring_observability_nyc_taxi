@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import time
 import asyncio
+import warnings
 from collections import OrderedDict
 import logging
 import json
@@ -45,6 +46,7 @@ handler.setFormatter(JSONFormatter())
 logging.root.handlers = [handler]
 logging.root.setLevel(logging.INFO)
 logger = logging.getLogger("prediction_api")
+warnings.filterwarnings("ignore", message="X has feature names")  # one noisy warning per request otherwise
 
 # ── Prometheus Metrics (Pillar: Metrics) ──
 from prometheus_client import Counter, Histogram, Gauge, Summary, generate_latest, CONTENT_TYPE_LATEST

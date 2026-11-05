@@ -27,3 +27,18 @@ def test_every_data_panel_declares_a_unit_and_status_dashboard_has_thresholds():
     status = json.loads(Path('services/grafana/dashboards/L0_status.json').read_text())
     stats = [p for p in status['panels'] if p['type'] == 'stat']
     assert len(stats) >= 6 and all(p['fieldConfig']['defaults']['thresholds']['steps'] for p in stats)
+
+
+def test_promtail_labels_stay_low_cardinality():
+    import yaml
+    config = yaml.safe_load(Path('services/promtail/promtail-config.yml').read_text())
+    stages = [s for job in config['scrape_configs'] for s in job['pipeline_stages'] if 'labels' in s]
+    labels = {name for s in stages for name in s['labels']}
+    assert labels and not labels & {'trace_id', 'span_id', 'request_id'}
+
+
+def test_promtail_keeps_the_full_json_line():
+    import yaml
+    config = yaml.safe_load(Path('services/promtail/promtail-config.yml').read_text())
+    stages = [s for job in config['scrape_configs'] for s in job['pipeline_stages']]
+    assert not any('output' in s for s in stages), 'output stage would replace the JSON line by its message'

@@ -86,3 +86,17 @@ def test_alert_scenarios_end_to_end():
     s.normal()
     s.latency()
     s.outage()
+
+
+def test_json_logs_reach_loki_with_correlation_fields():
+    """Regression: Loki used to answer 429 (trace_id as a label) and the JSON line was replaced by its message."""
+    import json
+    requests.post(f'{API}/fare_predict', json=VALID, headers={'X-Request-ID': 'loki-check-1'}, timeout=10)
+
+    def found():
+        end = int(time.time() * 1e9)
+        data = requests.get('http://localhost:3101/loki/api/v1/query_range', timeout=5, params={
+            'query': '{service="prediction_api"} |= "loki-check-1"', 'start': end - 300 * 10**9, 'end': end}).json()['data']['result']
+        return [json.loads(v[1]) for s in data for v in s['values'] if v[1].startswith('{')]
+    lines = eventually(found, 40)
+    assert lines and {'request_id', 'trace_id', 'model_version', 'level'} <= lines[0].keys()
