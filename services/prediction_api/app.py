@@ -1,30 +1,43 @@
 from fastapi import FastAPI, HTTPException, Request, Response
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 import mlflow.sklearn
 import pandas as pd
 import os
 import time
+import asyncio
 import logging
 import json
-from datetime import datetime
+import uuid
+from contextvars import ContextVar
+from datetime import datetime, timezone
 
 # ── Structured Logging (Pillar: Logs) ──
+# Every line is JSON with level, timestamp, request_id (correlation id) and model_version.
+# Payload values (locations, passengers...) are never logged: no personal data in logs.
+request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+state = {"model_version": "none"}
+
+
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         log_record = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
             "service": "prediction_api",
+            "request_id": request_id_var.get(),
+            "model_version": state["model_version"],
         }
-        if hasattr(record, "trace_id"):
-            log_record["trace_id"] = record.trace_id
-        if hasattr(record, "span_id"):
-            log_record["span_id"] = record.span_id
+        for key in ("trace_id", "span_id", "status", "endpoint", "duration_ms"):
+            if hasattr(record, key):
+                log_record[key] = getattr(record, key)
         if record.exc_info:
             log_record["exception"] = self.formatException(record.exc_info)
         return json.dumps(log_record)
+
 
 handler = logging.StreamHandler()
 handler.setFormatter(JSONFormatter())
@@ -48,6 +61,15 @@ http_request_duration_seconds = Histogram(
     "HTTP request duration in seconds",
     ["method", "endpoint"],
     buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+)
+
+invalid_requests_total = Counter(
+    "invalid_requests_total",
+    "Requests rejected at the door by input validation (HTTP 422)",
+)
+chaos_latency_seconds = Gauge(
+    "chaos_latency_seconds",
+    "Artificial latency injected for demo scenarios (0 = none)",
 )
 
 # ML Model Metrics (Layer 4: Model)
@@ -123,52 +145,65 @@ async def metrics_middleware(request: Request, call_next):
     if request.url.path == "/metrics":
         return await call_next(request)
 
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    request_id_var.set(request_id)
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
 
-    endpoint = request.url.path
+    # Label with the route TEMPLATE, never the raw path: scanners hitting random URLs
+    # must not create unbounded time series.
+    route = request.scope.get("route")
+    endpoint = route.path if route is not None else "unmatched"
     method = request.method
     status = str(response.status_code)
 
     http_requests_total.labels(method=method, endpoint=endpoint, status=status).inc()
     http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+    response.headers["X-Request-ID"] = request_id
 
-    # Log each request with trace context
-    span = trace.get_current_span()
-    ctx = span.get_span_context() if span else None
-    extra = {}
+    extra = {"status": response.status_code, "endpoint": endpoint, "duration_ms": round(duration * 1000, 1)}
+    ctx = trace.get_current_span().get_span_context()
     if ctx and ctx.trace_id:
         extra["trace_id"] = format(ctx.trace_id, "032x")
         extra["span_id"] = format(ctx.span_id, "016x")
-
-    log = logging.LogRecord(
-        name="prediction_api", level=logging.INFO, pathname="", lineno=0,
-        msg=f"{method} {endpoint} {status} {duration:.3f}s",
-        args=None, exc_info=None
-    )
-    for k, v in extra.items():
-        setattr(log, k, v)
-    logger.handle(log)
-
+    logger.info(f"{method} {endpoint} {status}", extra=extra)
     return response
+
+
+@app.exception_handler(RequestValidationError)
+async def reject_invalid_request(request: Request, exc: RequestValidationError):
+    """Defined behaviour for invalid input: reject with 422, count it, log it (fields only, no values)."""
+    invalid_requests_total.inc()
+    fields = sorted({".".join(str(p) for p in e["loc"][1:]) for e in exc.errors()})
+    logger.warning(f"Rejected invalid request: fields={fields}")
+    return JSONResponse(status_code=422, content={"detail": "Invalid request", "fields": fields})
 
 
 # Define a Pydantic model for request data
 class RequestData(BaseModel):
-    pickup_longitude: float = 0.0 # Coordinate placeholders if needed
-    pickup_latitude: float = 0.0
-    dropoff_longitude: float = 0.0
-    dropoff_latitude: float = 0.0
-    passenger_count: float = 1.0
-    vendor_id: int = 1
-    rate_code_id: float = 1.0
-    pu_location_id: int = 1
-    do_location_id: int = 1
-    pickup_hour: int = 12
-    pickup_dayofweek: int = 0
-    pickup_month: int = 1
-    pickup_weekday: int = 1
+    """Input contract: types AND bounds (NYC TLC zone ids are 1..265)."""
+    pickup_longitude: float = Field(0.0, ge=-180, le=180)
+    pickup_latitude: float = Field(0.0, ge=-90, le=90)
+    dropoff_longitude: float = Field(0.0, ge=-180, le=180)
+    dropoff_latitude: float = Field(0.0, ge=-90, le=90)
+    passenger_count: float = Field(1.0, ge=1, le=10)
+    vendor_id: int = Field(1, ge=1, le=2)
+    rate_code_id: float = Field(1.0, ge=1, le=6)
+    pu_location_id: int = Field(1, ge=1, le=265)
+    do_location_id: int = Field(1, ge=1, le=265)
+    pickup_hour: int = Field(12, ge=0, le=23)
+    pickup_dayofweek: int = Field(0, ge=0, le=6)
+    pickup_month: int = Field(1, ge=1, le=12)
+    pickup_weekday: int = Field(1, ge=0, le=1)
+
+
+class ChaosSettings(BaseModel):
+    latency_ms: int = Field(0, ge=0, le=10000)
+
+
+CHAOS_ENABLED = os.getenv("CHAOS_ENABLED", "false").lower() == "true"
+chaos = {"latency_ms": 0}
 
 model = None
 model_name = "NYC_Taxi_Fare_Model"
@@ -199,6 +234,7 @@ def load_champion_model():
             model_loaded.set(1)
             model_version_gauge.clear()
             model_version_gauge.labels(version=new_version).set(1)
+            state["model_version"] = str(new_version)
             
             logger.info(f"Champion model version {new_version} loaded successfully in {load_duration:.2f}s")
         return True
@@ -224,6 +260,8 @@ async def startup_event():
 async def predict(data: RequestData):
     global model
 
+    if chaos["latency_ms"]:
+        await asyncio.sleep(chaos["latency_ms"] / 1000)  # demo scenario: degraded dependency
     with tracer.start_as_current_span("fare_prediction") as span:
         if model is None:
             if not load_champion_model():
@@ -269,12 +307,44 @@ async def predict(data: RequestData):
             return {"predicted_fare": fare}
         except Exception as e:
             prediction_errors_total.labels(error_type="inference_error").inc()
-            logger.error(f"Prediction error: {e}")
+            logger.error(f"Prediction error: {type(e).__name__}")
             raise HTTPException(status_code=500, detail=str(e))
+
+SMOKE_ROW = pd.DataFrame([{"vendor_id": 1, "rate_code_id": 1.0, "pu_location_id": 48, "do_location_id": 79,
+                            "passenger_count": 1.0, "pickup_hour": 14, "pickup_dayofweek": 2,
+                            "pickup_month": 1, "pickup_weekday": 1}])
+
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": model is not None}
+    """Readiness: 200 only if a model is loaded AND answers a real prediction."""
+    if model is None:
+        return JSONResponse(status_code=503, content={"status": "unavailable", "model_loaded": False,
+                                                       "reason": "no champion model loaded"})
+    try:
+        fare = float(model.predict(SMOKE_ROW)[0])
+    except Exception as exc:
+        logger.error(f"Health smoke prediction failed: {type(exc).__name__}")
+        return JSONResponse(status_code=503, content={"status": "unavailable", "model_loaded": True,
+                                                       "reason": "model cannot predict"})
+    return {"status": "ok", "model_loaded": True, "model_version": state["model_version"], "smoke_fare": round(fare, 2)}
+
+
+# ── Demo fault injection (disabled unless CHAOS_ENABLED=true) ──
+@app.put("/admin/chaos")
+def set_chaos(settings: ChaosSettings):
+    if not CHAOS_ENABLED:
+        raise HTTPException(status_code=403, detail="Fault injection disabled (set CHAOS_ENABLED=true)")
+    chaos["latency_ms"] = settings.latency_ms
+    chaos_latency_seconds.set(settings.latency_ms / 1000)
+    logger.warning(f"Chaos latency set to {settings.latency_ms} ms")
+    return chaos
+
+
+@app.get("/admin/chaos")
+def get_chaos():
+    return {"enabled": CHAOS_ENABLED, **chaos}
+
 
 # ── Prometheus metrics endpoint ──
 @app.get("/metrics")
