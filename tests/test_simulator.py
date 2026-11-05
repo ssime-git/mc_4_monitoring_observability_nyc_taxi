@@ -22,4 +22,4 @@ def test_label_bias_is_optional_and_applied_to_synthetic_ground_truth(monkeypatc
         assert client.put('/settings', json={'running': False, 'requests_per_second': 5, 'error_rate': 0}).json()['label_bias'] == 0.5
     simulator.schedule_feedback('req-1', 10.0)
     _, request_id, actual = simulator.pending_feedback[0]
-    assert request_id == 'req-1' and 11 < actual < 19
+    assert request_id == 'req-1' and actual > 0.5

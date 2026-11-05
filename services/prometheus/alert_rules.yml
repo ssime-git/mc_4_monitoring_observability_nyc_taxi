@@ -1,90 +1,109 @@
+# Alert rules, versioned and loaded by Prometheus (see docker-compose.yml).
+# Every alert has: justified threshold, `for:`, severity, and an `action` the on-call person can take
+# (details in docs/RUNBOOKS.md). Demo timings are short on purpose; production would use longer `for:`.
+# Rate windows (1m) are >= 12x the 5s scrape interval, so one missed scrape never flips an alert.
 groups:
-  # ── Application Layer Alerts (Layer 3 — RED Method) ──
   - name: application_alerts
     rules:
-      # RED: Errors — Alert on symptoms, not causes
       - alert: HighErrorRate
+        # RED "Errors": server-side failures only (5xx). 422 are client mistakes and are counted separately.
+        # The traffic floor stops a single failed request from paging when the API is almost idle.
         expr: |
-          (
-            sum(rate(http_requests_total{status=~"5.."}[1m])) by (job)
-            /
-            sum(rate(http_requests_total[1m])) by (job)
-          ) > 0.10
-        for: 1m
-        labels:
-          severity: page
-          layer: application
-        annotations:
-          summary: "High error rate on {{ $labels.job }}"
-          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 10%)"
-
-      # RED: Duration — Latency degradation
-      - alert: HighLatencyP99
-        expr: |
-          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))
-          > 2.0
-        for: 5m
-        labels:
-          severity: ticket
-          layer: application
-        annotations:
-          summary: "High p99 latency on {{ $labels.job }}"
-          description: "p99 latency is {{ $value }}s (threshold: 2s)"
-
-      # Service availability
-      - alert: ServiceDown
-        expr: up == 0
+          sum(rate(http_requests_total{job="prediction_api",status=~"5.."}[1m]))
+            / sum(rate(http_requests_total{job="prediction_api"}[1m])) > 0.05
+          and sum(rate(http_requests_total{job="prediction_api"}[1m])) > 0.2
         for: 30s
-        labels:
-          severity: page
-          layer: platform
+        labels: {severity: page, layer: application}
+        annotations:
+          summary: "More than 5% of API responses are 5xx"
+          description: "5xx ratio is {{ $value | humanizePercentage }} (threshold 5%: above it, 1 customer in 20 sees a failure)."
+          action: "Check the API logs in Grafana (level=ERROR, then filter by request_id) and /health; roll back the model if the errors started with a new champion."
+          runbook_url: "docs/RUNBOOKS.md#higherrorrate"
+
+      - alert: HighLatencyP99
+        # RED "Duration": p99 from the histogram (never an average). Healthy p99 is ~50-100 ms, so 1 s is
+        # 10x normal and the point where a taxi app starts to feel frozen.
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="prediction_api",endpoint="/fare_predict"}[1m])) by (le)) > 1
+        for: 30s
+        labels: {severity: ticket, layer: application}
+        annotations:
+          summary: "p99 prediction latency above 1 s"
+          description: "p99 latency is {{ $value | humanizeDuration }} (threshold 1s; normal is ~0.1s)."
+          action: "Open the Tempo traces of /fare_predict: find the slow span (model vs. dependency). Scale out or restart the API if the model is the slow part."
+          runbook_url: "docs/RUNBOOKS.md#highlatencyp99"
+
+      - alert: ServiceDown
+        # Availability: Prometheus cannot scrape the target. 15 s = 3 failed scrapes.
+        expr: up == 0
+        for: 15s
+        labels: {severity: page, layer: platform}
         annotations:
           summary: "{{ $labels.job }} is down"
-          description: "Target {{ $labels.instance }} has been unreachable for 30s"
+          description: "Target {{ $labels.instance }} has not answered for 15s."
+          action: "Run `docker compose ps` and `docker compose logs {{ $labels.job }}`; restart the service (`docker compose up -d {{ $labels.job }}`)."
+          runbook_url: "docs/RUNBOOKS.md#servicedown"
 
-  # ── ML Model Layer Alerts (Layer 4) ──
   - name: model_alerts
     rules:
-      - alert: LowPredictionThroughput
-        expr: |
-          sum(rate(prediction_requests_total[5m])) < 0.01
-        for: 10m
-        labels:
-          severity: ticket
-          layer: model
-        annotations:
-          summary: "Low prediction throughput"
-          description: "Prediction rate has dropped below 0.01 req/s for 10 minutes"
-
       - alert: ModelNotLoaded
         expr: model_loaded == 0
-        for: 5m
-        labels:
-          severity: page
-          layer: model
-        annotations:
-          summary: "ML model is not loaded"
-          description: "The prediction API model has been unloaded for over 5 minutes"
-
-  # ── Drift Alerts (Evidently Metrics) ──
-  - name: drift_alerts
-    rules:
-      - alert: DataDriftDetected
-        expr: data_drift_detected == 1
         for: 1m
-        labels:
-          severity: ticket
-          layer: model
+        labels: {severity: page, layer: model}
         annotations:
-          summary: "Data drift detected"
-          description: "Data drift has been detected by Evidently service. Current drift detected: {{ $value }}"
+          summary: "No champion model is loaded"
+          description: "The API cannot serve predictions (503) because no champion model is in memory."
+          action: "Check the MLflow registry for the `champion` alias and the API logs; re-run the Prefect flow if no model was ever promoted."
+          runbook_url: "docs/RUNBOOKS.md#modelnotloaded"
+
+      - alert: DataDriftDetected
+        # Decision made by the pipeline with the thresholds in config/monitoring.yml (PSI/KS per feature).
+        expr: data_drift_detected == 1
+        for: 15s
+        labels: {severity: ticket, layer: model}
+        annotations:
+          summary: "Input data drifted from the model reference"
+          description: "Share of drifted features is above the configured dataset threshold (see feature_drift_psi / feature_drifted per feature)."
+          action: "Open the Evidently report of the latest run, identify the drifted features, check the data source, then retrain on recent data."
+          runbook_url: "docs/RUNBOOKS.md#datadriftdetected"
+
+      - alert: OnlineModelErrorHigh
+        # Performance once real fares arrive (delayed labels): online RMSE vs the offline validation RMSE.
+        # 1.25x tolerates normal noise but catches a ~50% shift in fares.
+        expr: |
+          sqrt(sum(rate(prediction_squared_error_dollars2_total[2m])) / sum(rate(labeled_predictions_total[2m])))
+            > 1.25 * scalar(model_drift_rmse_reference)
+        for: 30s
+        labels: {severity: ticket, layer: model}
+        annotations:
+          summary: "Online RMSE is 25% above the validation RMSE"
+          description: "Online RMSE is {{ $value | humanize }} USD against the reference measured at training time."
+          action: "Compare recent real fares with predictions; retrain with fresh labels and promote only if the candidate beats the champion."
+          runbook_url: "docs/RUNBOOKS.md#onlinemodelerrorhigh"
 
       - alert: ModelPerformanceDegraded
+        # Offline check done by the pipeline at training time.
         expr: model_drift_rmse_current > model_drift_rmse_reference * 1.2
         for: 1m
-        labels:
-          severity: ticket
-          layer: model
+        labels: {severity: ticket, layer: model}
         annotations:
-          summary: "Model performance degraded"
-          description: "Current model RMSE ({{ $value }}) is >20% worse than reference model RMSE"
+          summary: "Candidate model is 20% worse than the champion"
+          description: "Candidate RMSE ({{ $value | humanize }}) is more than 20% above the champion's."
+          action: "Keep the champion (it is not promoted automatically) and inspect the training data quality of the last run."
+          runbook_url: "docs/RUNBOOKS.md#modelperformancedegraded"
+
+  - name: business_alerts
+    rules:
+      - alert: BusinessThroughputLow
+        # Business indicator: priced trips per minute (revenue proxy). Normal demo traffic is ~120/min;
+        # below 30/min the business is losing most of its quotes. Not raised when the API is down (ServiceDown covers it).
+        expr: |
+          sum(rate(prediction_requests_total[1m])) * 60 < 30
+          and on() (up{job="prediction_api"} == 1)
+        for: 30s
+        labels: {severity: ticket, layer: business}
+        annotations:
+          summary: "Fewer than 30 fares quoted per minute"
+          description: "Only {{ $value | humanize }} successful quotes/min; the usual level is ~120."
+          action: "Check upstream traffic (is the app sending requests?), the 422 rate (bad clients) and the 5xx rate; see the Business dashboard."
+          runbook_url: "docs/RUNBOOKS.md#businessthroughputlow"

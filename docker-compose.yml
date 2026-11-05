@@ -92,11 +92,31 @@ services:
     - ./services/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     - ./services/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
     - prometheus_data:/prometheus
+    depends_on:
+    - alertmanager
     command:
     - --config.file=/etc/prometheus/prometheus.yml
     - --storage.tsdb.path=/prometheus
     ports:
     - 9090:9090
+    networks:
+    - ml-network
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+    - ./services/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+    - 9093:9093
+    depends_on:
+    - alert_webhook
+    networks:
+    - ml-network
+  alert_webhook:
+    build:
+      context: .
+      dockerfile: services/alert_webhook/Dockerfile
+    ports:
+    - 8020:8020
     networks:
     - ml-network
   grafana:

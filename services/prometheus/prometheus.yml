@@ -1,8 +1,14 @@
 global:
+  # 5 s is a demo choice: an outage or a latency spike is visible within ~15 s. Production usually
+  # uses 15-30 s. Rule windows below (1m) stay >= 12x this interval, so they remain smooth.
   scrape_interval: 5s
   evaluation_interval: 5s
 rule_files:
 - alert_rules.yml
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets: [alertmanager:9093]
 scrape_configs:
 - job_name: prediction_api
   metrics_path: /metrics
@@ -29,3 +35,9 @@ scrape_configs:
   static_configs:
   - targets:
     - pushgateway:9091
+- job_name: alertmanager
+  static_configs:
+  - targets:
+    - alertmanager:9093
+    labels:
+      layer: platform

@@ -1,0 +1,103 @@
+# Run with: promtool test rules services/prometheus/tests/alert_rules_test.yml
+rule_files:
+  - ../alert_rules.yml
+evaluation_interval: 5s
+tests:
+  - interval: 5s
+    name: slow responses trigger HighLatencyP99
+    input_series:
+      # every request lands in the 2.5 s bucket
+      - series: 'http_request_duration_seconds_bucket{job="prediction_api",endpoint="/fare_predict",le="1.0"}'
+        values: '0+0x40'
+      - series: 'http_request_duration_seconds_bucket{job="prediction_api",endpoint="/fare_predict",le="2.5"}'
+        values: '0+10x40'
+      - series: 'http_request_duration_seconds_bucket{job="prediction_api",endpoint="/fare_predict",le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 10s
+        alertname: HighLatencyP99
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: HighLatencyP99
+        exp_alerts:
+          - exp_labels: {severity: ticket, layer: application}
+            exp_annotations:
+              summary: "p99 prediction latency above 1 s"
+              description: "p99 latency is 2.485s (threshold 1s; normal is ~0.1s)."
+              action: "Open the Tempo traces of /fare_predict: find the slow span (model vs. dependency). Scale out or restart the API if the model is the slow part."
+              runbook_url: "docs/RUNBOOKS.md#highlatencyp99"
+  - interval: 5s
+    name: fast responses do not alert
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="prediction_api",endpoint="/fare_predict",le="0.1"}'
+        values: '0+10x40'
+      - series: 'http_request_duration_seconds_bucket{job="prediction_api",endpoint="/fare_predict",le="+Inf"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HighLatencyP99
+        exp_alerts: []
+  - interval: 5s
+    name: dead target triggers ServiceDown
+    input_series:
+      - series: 'up{job="prediction_api",instance="prediction_api:8000"}'
+        values: '1 1 1 0x20'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels: {severity: page, layer: platform, job: prediction_api, instance: "prediction_api:8000"}
+            exp_annotations:
+              summary: "prediction_api is down"
+              description: "Target prediction_api:8000 has not answered for 15s."
+              action: "Run `docker compose ps` and `docker compose logs prediction_api`; restart the service (`docker compose up -d prediction_api`)."
+              runbook_url: "docs/RUNBOOKS.md#servicedown"
+  - interval: 5s
+    name: drift flag triggers DataDriftDetected
+    input_series:
+      - series: 'data_drift_detected{job="taxi_pipeline"}'
+        values: '0 0 1x20'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: DataDriftDetected
+        exp_alerts:
+          - exp_labels: {severity: ticket, layer: model, job: taxi_pipeline}
+            exp_annotations:
+              summary: "Input data drifted from the model reference"
+              description: "Share of drifted features is above the configured dataset threshold (see feature_drift_psi / feature_drifted per feature)."
+              action: "Open the Evidently report of the latest run, identify the drifted features, check the data source, then retrain on recent data."
+              runbook_url: "docs/RUNBOOKS.md#datadriftdetected"
+  - interval: 5s
+    name: low quote rate triggers the business alert only while the API is up
+    input_series:
+      - series: 'prediction_requests_total{job="prediction_api"}'
+        values: '0+0x40'
+      - series: 'up{job="prediction_api"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BusinessThroughputLow
+        exp_alerts:
+          - exp_labels: {severity: ticket, layer: business}
+            exp_annotations:
+              summary: "Fewer than 30 fares quoted per minute"
+              description: "Only 0 successful quotes/min; the usual level is ~120."
+              action: "Check upstream traffic (is the app sending requests?), the 422 rate (bad clients) and the 5xx rate; see the Business dashboard."
+              runbook_url: "docs/RUNBOOKS.md#businessthroughputlow"
+  - interval: 5s
+    name: 5xx burst triggers HighErrorRate
+    input_series:
+      - series: 'http_requests_total{job="prediction_api",status="200"}'
+        values: '0+5x40'
+      - series: 'http_requests_total{job="prediction_api",status="500"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels: {severity: page, layer: application}
+            exp_annotations:
+              summary: "More than 5% of API responses are 5xx"
+              description: "5xx ratio is 50% (threshold 5%: above it, 1 customer in 20 sees a failure)."
+              action: "Check the API logs in Grafana (level=ERROR, then filter by request_id) and /health; roll back the model if the errors started with a new champion."
+              runbook_url: "docs/RUNBOOKS.md#higherrorrate"

@@ -114,6 +114,8 @@ def send_request(payload):
 # Delayed ground truth. The "real" fare is SYNTHETIC here: prediction x noise (x bias when the
 # presenter simulates a changing world). In production it would come from the billing system.
 FEEDBACK_DELAY_S = float(os.getenv("FEEDBACK_DELAY_S", "15"))
+# Noise comparable to the offline validation RMSE (~$13): a healthy model shows an online/offline ratio near 1.
+LABEL_NOISE_USD = float(os.getenv("LABEL_NOISE_USD", "12"))
 pending_feedback = []
 
 
@@ -122,7 +124,7 @@ def schedule_feedback(request_id, predicted):
         return
     with lock:
         bias = state['label_bias']
-    actual = max(0.5, predicted * (1 + bias) * random.lognormvariate(0, 0.08))
+    actual = max(0.5, predicted * (1 + bias) + random.gauss(0, LABEL_NOISE_USD))
     pending_feedback.append((time.time() + FEEDBACK_DELAY_S, request_id, actual))
 
 

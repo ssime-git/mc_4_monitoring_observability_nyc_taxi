@@ -1,0 +1,13 @@
+# Demo receiver: every notification is POSTed to a fake webhook (services/alert_webhook) that stores
+# it and shows it in Streamlit. Swap the receiver for Slack/PagerDuty/email in production.
+route:
+  receiver: demo-webhook
+  group_by: [alertname, layer]
+  group_wait: 5s        # short on purpose so the audience sees the notification quickly
+  group_interval: 10s
+  repeat_interval: 1h
+receivers:
+  - name: demo-webhook
+    webhook_configs:
+      - url: http://alert_webhook:8020/alerts
+        send_resolved: true
