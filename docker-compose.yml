@@ -1,9 +1,9 @@
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:15-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     environment:
-    - POSTGRES_USER=admin
-    - POSTGRES_PASSWORD=admin
+    - POSTGRES_USER=${POSTGRES_USER:-admin}
+    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     - POSTGRES_DB=nyc_taxi
     ports:
     - 5432:5432
@@ -14,7 +14,7 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - pg_isready -U admin -d nyc_taxi
+      - pg_isready -U $${POSTGRES_USER} -d nyc_taxi
       interval: 5s
       timeout: 5s
       retries: 30
@@ -30,8 +30,8 @@ services:
     - ml-network
     environment: &id001
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
       AWS_DEFAULT_REGION: us-east-1
     depends_on:
       minio_init:
@@ -73,8 +73,10 @@ services:
       dockerfile: services/frontend/Dockerfile
     depends_on:
     - prediction_api
+    - controller
     environment:
     - PREDICTION_API_URL=http://prediction_api:8000
+    - ALERTMANAGER_UI_URL=${ALERTMANAGER_UI_URL:-http://localhost:9093}
     - PORTAL_USERNAME=${PORTAL_USERNAME:-demo}
     - PORTAL_PASSWORD=${PORTAL_PASSWORD:?Set PORTAL_PASSWORD in .env}
     - PREFECT_UI_URL=${PREFECT_UI_URL:-http://localhost:4200}
@@ -101,6 +103,14 @@ services:
     - 9090:9090
     networks:
     - ml-network
+  controller:
+    build:
+      context: .
+      dockerfile: services/controller/Dockerfile
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+    - ml-network
   alertmanager:
     image: prom/alertmanager:v0.27.0
     volumes:
@@ -122,7 +132,7 @@ services:
   grafana:
     image: grafana/grafana:10.2.0
     environment:
-    - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
     - GF_USERS_ALLOW_SIGN_UP=false
     - GF_DATABASE_WAL=true
     - GF_SECURITY_ALLOW_EMBEDDING=true
@@ -142,7 +152,7 @@ services:
     image: nyc-taxi-frontend:demo
     command: [python, services/frontend/configure_monitoring.py]
     environment:
-      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
     depends_on:
       - grafana
     networks:
@@ -196,8 +206,8 @@ services:
     - --console-address
     - :9001
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     ports:
     - 9000:9000
     - 9001:9001
@@ -254,7 +264,7 @@ services:
     - services/pipeline/bootstrap.py
     environment:
       PREFECT_API_URL: http://prefect_server:4200/api
-      DATABASE_URL: postgresql://admin:admin@db:5432/nyc_taxi
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@db:5432/nyc_taxi
       MLFLOW_TRACKING_URI: http://mlflow_server:5000
       PUSHGATEWAY_URL: http://pushgateway:9091
       DEMO_ROWS: ${DEMO_ROWS:-5000}

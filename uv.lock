@@ -1367,12 +1367,19 @@ api = [
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
+controller = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "uvicorn" },
+]
 dev = [
     { name = "httpx" },
     { name = "pytest" },
 ]
 frontend = [
+    { name = "altair" },
     { name = "mlflow-skinny" },
+    { name = "pandas" },
     { name = "requests" },
     { name = "streamlit" },
 ]
@@ -1444,12 +1451,19 @@ api = [
     { name = "sqlalchemy", specifier = ">=2,<3" },
     { name = "uvicorn", extras = ["standard"] },
 ]
+controller = [
+    { name = "fastapi" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "uvicorn" },
+]
 dev = [
     { name = "httpx" },
     { name = "pytest" },
 ]
 frontend = [
+    { name = "altair" },
     { name = "mlflow-skinny", specifier = "==2.22.2" },
+    { name = "pandas" },
     { name = "requests" },
     { name = "streamlit", specifier = ">=1.45,<2" },
 ]

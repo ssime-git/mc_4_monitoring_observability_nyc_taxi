@@ -1,4 +1,5 @@
 """Real integration verification against the running demo (no mocks)."""
+import os
 import time
 import boto3
 import mlflow
@@ -42,7 +43,7 @@ if __name__ == '__main__':
     champion = wait_for_model()
     print(f'Champion registered: version {champion.version}', flush=True)
     s3 = boto3.client('s3', endpoint_url='http://localhost:9000',
-                      aws_access_key_id='minioadmin', aws_secret_access_key='minioadmin')
+                      aws_access_key_id=os.environ.get('MINIO_ROOT_USER', 'minioadmin'), aws_secret_access_key=os.environ['MINIO_ROOT_PASSWORD'])
     objects = s3.list_objects_v2(Bucket='mlflow-artifacts')['Contents']
     assert any(o['Key'].endswith('model.pkl') for o in objects)
     model = mlflow.sklearn.load_model(f'models:/{model_name}@champion')
