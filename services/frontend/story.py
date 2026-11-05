@@ -372,6 +372,31 @@ def quality():
     with right:
         c.section('② Monitoring')
         live_quality()
+    quality_explainer()
+
+
+def quality_explainer():
+    st.divider()
+    c.section('💡 How to read this page — where does the “real fare” come from?')
+    diagram('A trip is priced (prediction, e.g. $25)', 'The API remembers it under its request_id',
+            '~15 s later the real fare arrives (e.g. $31)', 'Error = prediction − real fare → RMSE',
+            'Compared with the validation RMSE → alert')
+    demo, prod = st.columns(2)
+    with demo.container(border=True):
+        st.markdown('##### 🎭 In this demo — synthetic')
+        st.markdown('- The **simulator invents** the real fare: `prediction × (1 + bias) + random noise`.\n'
+                    '- Noise (≈ $12) is set close to the validation error, so the ratio starts near **1×**.\n'
+                    '- The **+100 %** button sets the bias to 1: real fares double and the model does not know.\n'
+                    '- It does **not** prove the model is bad; it proves the *measurement chain and the alert work*.')
+    with prod.container(border=True):
+        st.markdown('##### 🏭 In production — real')
+        st.markdown('- The real fare comes from **billing or the end of the trip** (the taximeter).\n'
+                    '- It is joined to the prediction by an **id** (here `request_id`, in practice a trip id).\n'
+                    '- It arrives **late** (minutes to days): that is why the metric is called *delayed labels*.\n'
+                    '- In the NYC TLC data this is the `fare_amount` column, used for training.')
+    st.markdown('**The alert rule, in one line:** online RMSE > **1.25 × validation RMSE** for 30 s '
+                '(the threshold follows each newly trained model instead of being a magic number). '
+                'Drift looks at the **inputs**; this looks at whether the **predictions are wrong**.')
 
 
 # ---------------------------------------------------------------------------------------- 7 business
