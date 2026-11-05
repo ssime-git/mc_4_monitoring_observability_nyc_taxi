@@ -146,6 +146,8 @@ services:
     - 3000:3000
     depends_on:
     - prometheus
+    # On a brand-new volume Grafana can lose a SQLite migration race ("database is locked") and exit; retry.
+    restart: unless-stopped
     networks:
     - ml-network
   monitoring_init:
@@ -155,6 +157,7 @@ services:
       GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
     depends_on:
       - grafana
+    restart: on-failure
     networks:
       - ml-network
 

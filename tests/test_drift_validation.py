@@ -72,6 +72,7 @@ def test_validation_quarantines_bad_rows_with_reason():
 def test_schema_rejects_wrong_types_and_missing_values():
     frame = sample(10)
     frame['total_fare'] = 10.0
+    frame['vendor_id'] = frame['vendor_id'].astype(float)
     frame.loc[3, 'vendor_id'] = np.inf
     valid, quarantined = taxi_validation.split_valid_invalid(frame)
     assert len(quarantined) == 1 and 3 in quarantined.index

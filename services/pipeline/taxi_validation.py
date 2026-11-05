@@ -1,8 +1,8 @@
 """Schema and value validation (pandera). Invalid rows are QUARANTINED with a reason, never dropped silently."""
 import numpy as np
 import pandas as pd
-import pandera as pa
-from pandera import Check, Column
+import pandera.pandas as pa
+from pandera.pandas import Check, Column
 
 SCHEMA = pa.DataFrameSchema({
     'vendor_id': Column(float, Check.in_range(1, 7), nullable=False),
