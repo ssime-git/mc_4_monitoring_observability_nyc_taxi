@@ -192,4 +192,5 @@ Do not ship either to a real environment.
 - Delayed labels in the demo are **synthetic** (prediction + noise, plus bias when triggered).
 - Random 80/20 validation is fine for a demo; a real project should use a temporal split.
 - Dashboard viewers are anonymous and Streamlit login protects the portal only, not the direct ports.
-- Variables ending in `_UI_URL` are browser-facing: replace `localhost` by the host name when presenting from another computer.
+- Embedded tools open on the host typed in the browser, so `http://localhost:8501` and `http://<vm-ip>:8501` both work without any setting. `PUBLIC_HOST` in `.env` forces one address if needed.
+- On a VM, open only ports 8501, 3000, 4200, 5000, 9090 and 9093 to your own IP, and change the passwords in `.env` first. Prometheus, Prefect and the other tools have no login, and the Compose file also publishes Postgres, MinIO and the API (with `/admin/chaos`) on all interfaces.

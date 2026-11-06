@@ -77,13 +77,9 @@ services:
     environment:
     - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@db:5432/nyc_taxi
     - PREDICTION_API_URL=http://prediction_api:8000
-    - ALERTMANAGER_UI_URL=${ALERTMANAGER_UI_URL:-http://localhost:9093}
     - PORTAL_USERNAME=${PORTAL_USERNAME:-demo}
     - PORTAL_PASSWORD=${PORTAL_PASSWORD:?Set PORTAL_PASSWORD in .env}
-    - PREFECT_UI_URL=${PREFECT_UI_URL:-http://localhost:4200}
-    - GRAFANA_UI_URL=${GRAFANA_UI_URL:-http://localhost:3000}
-    - PROMETHEUS_UI_URL=${PROMETHEUS_UI_URL:-http://localhost:9090}
-    - MLFLOW_UI_URL=${MLFLOW_UI_URL:-http://localhost:5000}
+    - PUBLIC_HOST=${PUBLIC_HOST:-}
     - MLFLOW_TRACKING_URI=http://mlflow_server:5000
     ports:
     - 8501:8501
@@ -245,7 +241,8 @@ services:
     - 0.0.0.0
     environment:
       PREFECT_API_DATABASE_CONNECTION_URL: sqlite+aiosqlite:////prefect-data/prefect.db
-      PREFECT_UI_API_URL: ${PREFECT_BROWSER_API_URL:-http://localhost:4200/api}
+      # Relative, so the Prefect UI works from localhost and from a VM address alike.
+      PREFECT_UI_API_URL: /api
     ports:
     - 4200:4200
     volumes:

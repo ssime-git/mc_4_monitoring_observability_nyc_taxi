@@ -1,3 +1,5 @@
+import importlib
+import types
 from pathlib import Path
 
 import pytest
@@ -66,3 +68,18 @@ def test_no_emoji_left_in_the_interface():
     emoji = re.compile('[\U0001F300-\U0001FAFF\u2600-\u27BF]')
     for name in ['app.py', 'story.py', 'tools.py', 'ui.py', 'metric_guides.py']:
         assert not emoji.search((ROOT / 'services/frontend' / name).read_text()), name
+
+
+@pytest.mark.parametrize(('forced', 'host_header', 'expected'), [
+    ('', 'localhost:8501', 'http://localhost:3000'),
+    ('', '203.0.113.10:8501', 'http://203.0.113.10:3000'),
+    ('', '[2001:db8::1]:8501', 'http://[2001:db8::1]:3000'),
+    ('', None, 'http://localhost:3000'),
+    ('demo.example.org', '203.0.113.10:8501', 'http://demo.example.org:3000'),
+])
+def test_tool_urls_follow_the_address_used_by_the_browser(monkeypatch, forced, host_header, expected):
+    common = importlib.import_module('common')
+    monkeypatch.setattr(common, 'PUBLIC_HOST', forced)
+    headers = {} if host_header is None else {'Host': host_header}
+    monkeypatch.setattr(common, 'st', types.SimpleNamespace(context=types.SimpleNamespace(headers=headers)))
+    assert common.public_url(3000) == expected

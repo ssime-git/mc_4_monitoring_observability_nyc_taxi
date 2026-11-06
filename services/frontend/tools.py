@@ -1,7 +1,6 @@
 """Deep-dive pages: live alerts, logs/traces explorer, embedded tool UIs and Evidently reports."""
 import json
 import os
-from urllib.parse import urlsplit
 
 import pandas as pd
 import streamlit as st
@@ -11,12 +10,6 @@ import common as c
 import ui
 from metric_guides import render_guide
 
-URLS = {
-    'Prefect': os.getenv('PREFECT_UI_URL', 'http://localhost:4200'),
-    'Prometheus': os.getenv('PROMETHEUS_UI_URL', 'http://localhost:9090'),
-    'Alertmanager': os.getenv('ALERTMANAGER_UI_URL', 'http://localhost:9093'),
-    'MLflow': os.getenv('MLFLOW_UI_URL', 'http://localhost:5000'),
-}
 DASHBOARDS = {'L0 Is it OK?': 'l0-status', 'L1 Executive': 'l1-executive',
               'L2 System (RED)': 'l2-system-overview', 'L3 Deep dive': 'l3-deep-dive'}
 
@@ -24,10 +17,6 @@ DASHBOARDS = {'L0 Is it OK?': 'l0-status', 'L1 Executive': 'l1-executive',
 def embed(title, url):
     ui.page_header('Deep dive', title)
     render_guide(title)
-    parsed = urlsplit(url or '')
-    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
-        st.error('The configured URL must be an HTTP(S) address reachable from the browser.')
-        return
     st.iframe(url, height=900)
     st.link_button('Open in a new tab', url)
 
@@ -36,25 +25,25 @@ def grafana():
     ui.page_header('Observe', 'Grafana dashboards')
     render_guide('Grafana')
     choice = st.segmented_control('Dashboard', list(DASHBOARDS), default='L0 Is it OK?', label_visibility='collapsed') or 'L0 Is it OK?'
-    url = f'{c.GRAFANA}/d/{DASHBOARDS[choice]}?orgId=1&kiosk&theme={ui.color_scheme()}'
+    url = f'{c.grafana_url()}/d/{DASHBOARDS[choice]}?orgId=1&kiosk&theme={ui.color_scheme()}'
     st.iframe(url, height=900)
     st.link_button('Open in a new tab', url)
 
 
 def prefect():
-    embed('Prefect', URLS['Prefect'])
+    embed('Prefect', c.public_url(4200))
 
 
 def prometheus():
-    embed('Prometheus', URLS['Prometheus'])
+    embed('Prometheus', c.public_url(9090))
 
 
 def mlflow_page():
-    embed('MLflow', URLS['MLflow'])
+    embed('MLflow', c.public_url(5000))
 
 
 def alertmanager():
-    embed('Alertmanager', URLS['Alertmanager'])
+    embed('Alertmanager', c.public_url(9093))
 
 
 @st.fragment(run_every='3s')
@@ -85,7 +74,7 @@ def alerts():
     with st.container(horizontal=True):
         if st.button('Clear notifications'):
             c.safe(lambda: c.call('DELETE', f'{c.WEBHOOK}/alerts'))
-        st.link_button('Open Alertmanager', URLS['Alertmanager'])
+        st.link_button('Open Alertmanager', c.public_url(9093))
 
 
 @st.fragment(run_every='4s')
@@ -108,7 +97,7 @@ def logs_traces():
         only_slow = st.toggle('Slower than 500 ms')
     live_explorer(level, only_slow)
     with st.expander('Same data in Grafana'):
-        st.iframe(f'{c.GRAFANA}/d/l2-system-overview?orgId=1&kiosk&theme={ui.color_scheme()}', height=700)
+        st.iframe(f'{c.grafana_url()}/d/l2-system-overview?orgId=1&kiosk&theme={ui.color_scheme()}', height=700)
 
 
 def reports():

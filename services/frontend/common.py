@@ -1,11 +1,13 @@
 """Data access for the demo pages: service clients, live queries and controls. Rendering lives in ui.py."""
 import json
 import os
+import re
 import time
 from urllib.parse import urlencode
 
 import pandas as pd
 import requests
+import streamlit as st
 
 API = os.getenv('PREDICTION_API_URL', 'http://prediction_api:8000')
 PROM = os.getenv('PROMETHEUS_API_URL', 'http://prometheus:9090')
@@ -16,7 +18,7 @@ PREFECT = os.getenv('PREFECT_API_URL', 'http://prefect_server:4200/api')
 CONTROLLER = os.getenv('CONTROLLER_API_URL', 'http://controller:8030')
 LOKI = os.getenv('LOKI_API_URL', 'http://loki:3100')
 TEMPO = os.getenv('TEMPO_API_URL', 'http://tempo:3200')
-GRAFANA = os.getenv('GRAFANA_UI_URL', 'http://localhost:3000').rstrip('/')
+PUBLIC_HOST = os.getenv('PUBLIC_HOST', '').strip()
 
 PAYLOAD = dict(vendor_id=1, passenger_count=1., rate_code_id=1., pu_location_id=48, do_location_id=79,
                pickup_hour=14, pickup_dayofweek=2, pickup_month=1, pickup_weekday=1)
@@ -134,9 +136,19 @@ def slowest_traces(limit=5, minutes=10):
     return pd.DataFrame(rows).sort_values('duration_ms', ascending=False).head(limit) if rows else pd.DataFrame()
 
 
+def public_url(port):
+    """Address of a tool for the viewer's browser: same host as the portal, so localhost and a VM IP both work."""
+    host = PUBLIC_HOST or re.sub(r':\d+$', '', st.context.headers.get('Host') or '') or 'localhost'
+    return f'http://{host}:{port}'
+
+
+def grafana_url():
+    return public_url(3000)
+
+
 def grafana_panel_url(dashboard_uid, slug, panel_id, theme):
     query = urlencode({'orgId': 1, 'panelId': panel_id, 'refresh': '5s', 'from': 'now-15m', 'to': 'now', 'theme': theme})
-    return f'{GRAFANA}/d-solo/{dashboard_uid}/{slug}?{query}'
+    return f'{grafana_url()}/d-solo/{dashboard_uid}/{slug}?{query}'
 
 
 # ---- controls -------------------------------------------------------------------------------------
